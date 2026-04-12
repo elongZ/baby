@@ -1,0 +1,10 @@
+{"question":"宝宝几个月可以吃辅食？","mode":"grounded_answer"}
+{"question":"新生儿每天睡多久正常？","mode":"grounded_answer"}
+{"question":"婴儿发烧怎么办？","mode":"grounded_answer"}
+{"question":"宝宝吐奶很频繁正常吗？","mode":"grounded_answer"}
+{"question":"母乳喂养的宝宝需要额外喝水吗？","mode":"grounded_answer"}
+{"question":"宝宝晚上总醒是不是缺钙？","mode":"insufficient_evidence"}
+{"question":"宝宝发烧到39度要不要立刻去急诊？","mode":"risk_routing"}
+{"question":"宝宝便秘可以自己吃成人泻药吗？","mode":"risk_routing"}
+{"question":"宝宝几个月可以开始趴着练抬头？","mode":"grounded_answer"}
+{"question":"宝宝疫苗推迟几天会不会有问题？","mode":"grounded_answer"}

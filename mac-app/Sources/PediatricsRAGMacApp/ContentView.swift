@@ -7,7 +7,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 260, ideal: 280, max: 320)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 280, max: 280)
         } detail: {
             detail
         }
@@ -339,13 +339,13 @@ struct ContentView: View {
                     }
                 }
             }
-            .frame(width: 320)
+            .frame(width: 300)
 
             glassPanel(title: "Editor", systemImage: "slider.horizontal.3", minHeight: 540) {
                 if viewModel.trainingDraft != nil {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
-                            TrainingTextEditorCard(title: "Sample ID", text: viewModel.selectedTrainingSampleID ?? "-", isReadOnly: true, minHeight: 52)
+                            trainingMetadataStrip
 
                             if !viewModel.trainingCompletionIssues.isEmpty {
                                 validationCard(viewModel.trainingCompletionIssues)
@@ -360,7 +360,8 @@ struct ContentView: View {
                                     axis: .vertical
                                 )
                                 .textFieldStyle(.roundedBorder)
-                                .lineLimit(2...5)
+                                .lineLimit(4...8)
+                                .controlSize(.large)
                             }
 
                             HStack(spacing: 12) {
@@ -392,7 +393,7 @@ struct ContentView: View {
                             TrainingTextEditorCard(
                                 title: "Annotation Guideline",
                                 text: viewModel.binding(for: \.annotationGuideline, default: ""),
-                                minHeight: 120
+                                minHeight: 150
                             )
 
                             TrainingTextEditorCard(
@@ -407,13 +408,13 @@ struct ContentView: View {
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
                                 },
-                                minHeight: 220
+                                minHeight: 320
                             )
 
                             TrainingTextEditorCard(
                                 title: "Annotation Notes",
                                 text: viewModel.binding(for: \.annotationNotes, default: ""),
-                                minHeight: 110
+                                minHeight: 160
                             )
                         }
                     }
@@ -424,7 +425,7 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
-            .frame(minWidth: 420, maxWidth: .infinity)
+            .frame(minWidth: 380, maxWidth: .infinity)
 
             glassPanel(title: "Contexts", systemImage: "doc.text.magnifyingglass", minHeight: 540) {
                 if let draft = viewModel.trainingDraft {
@@ -475,7 +476,7 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
-            .frame(minWidth: 360, maxWidth: .infinity)
+            .frame(minWidth: 320, maxWidth: .infinity)
         }
     }
 
@@ -971,6 +972,43 @@ struct ContentView: View {
     private func boolLabel(_ value: Bool?) -> String {
         guard let value else { return "-" }
         return value ? "true" : "false"
+    }
+
+    private var trainingMetadataStrip: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Sample ID")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(viewModel.selectedTrainingSampleID ?? "-")
+                    .font(.system(.body, design: .monospaced).weight(.semibold))
+            }
+
+            Spacer()
+
+            if let draft = viewModel.trainingDraft {
+                TrainingStatusBadge(title: draft.status.title, tint: statusTint(draft.status))
+                TrainingStatusBadge(title: draft.mode.title, tint: Color(red: 0.24, green: 0.53, blue: 0.94))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(0.05))
+        )
+    }
+
+    private func statusTint(_ status: TrainingSampleStatus) -> Color {
+        switch status {
+        case .draft:
+            return Color(red: 0.96, green: 0.58, blue: 0.24)
+        case .done:
+            return Color(red: 0.13, green: 0.68, blue: 0.54)
+        case .archived:
+            return .secondary
+        }
     }
 
     private func autosaveSymbol(for state: TrainingAutosaveState) -> String {

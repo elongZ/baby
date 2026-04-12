@@ -10,7 +10,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "PediatricsRAGMacApp",
-            path: "Sources/PediatricsRAGMacApp"
+            path: "Sources/PediatricsRAGMacApp",
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
+            ]
         ),
     ]
 )

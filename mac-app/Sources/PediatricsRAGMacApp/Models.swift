@@ -3,6 +3,7 @@ import Foundation
 enum AppSection: String, CaseIterable, Identifiable {
     case chat
     case knowledgeBase
+    case trainingData
 
     var id: String { rawValue }
 
@@ -12,6 +13,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "Chat"
         case .knowledgeBase:
             return "Knowledge Base"
+        case .trainingData:
+            return "Training Data"
         }
     }
 
@@ -21,6 +24,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "bubble.left.and.bubble.right"
         case .knowledgeBase:
             return "externaldrive.badge.checkmark"
+        case .trainingData:
+            return "square.and.pencil"
         }
     }
 }
@@ -186,6 +191,179 @@ struct AskRequest {
     let relevanceThreshold: Double
 }
 
+enum TrainingSampleMode: String, CaseIterable, Identifiable, Codable {
+    case groundedAnswer = "grounded_answer"
+    case insufficientEvidence = "insufficient_evidence"
+    case riskRouting = "risk_routing"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .groundedAnswer:
+            return "Grounded"
+        case .insufficientEvidence:
+            return "Insufficient"
+        case .riskRouting:
+            return "Risk Routing"
+        }
+    }
+}
+
+enum TrainingSampleStatus: String, CaseIterable, Identifiable, Codable {
+    case draft
+    case done
+    case archived
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.capitalized }
+}
+
+enum TrainingSampleFilter: String, CaseIterable, Identifiable {
+    case all
+    case draft
+    case done
+    case archived
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.capitalized }
+
+    var status: TrainingSampleStatus? {
+        switch self {
+        case .all:
+            return nil
+        case .draft:
+            return .draft
+        case .done:
+            return .done
+        case .archived:
+            return .archived
+        }
+    }
+}
+
+struct TrainingContext: Codable, Hashable, Identifiable {
+    let ref: String
+    let chunkID: String?
+    let source: String?
+    let page: Int?
+    let text: String
+
+    var id: String {
+        chunkID ?? "\(ref)-\(source ?? "-")-\(page ?? -1)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ref
+        case chunkID = "chunk_id"
+        case source
+        case page
+        case text
+    }
+}
+
+struct TrainingSample: Identifiable, Codable, Equatable {
+    let sampleID: String
+    var question: String
+    var mode: TrainingSampleMode
+    var annotationGuideline: String
+    var contexts: [TrainingContext]
+    var answer: String
+    var annotationNotes: String
+    var status: TrainingSampleStatus
+    var sourceType: String
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+    var version: Int
+
+    var id: String { sampleID }
+
+    enum CodingKeys: String, CodingKey {
+        case sampleID = "sample_id"
+        case question
+        case mode
+        case annotationGuideline = "annotation_guideline"
+        case contexts
+        case answer
+        case annotationNotes = "annotation_notes"
+        case status
+        case sourceType = "source_type"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+        case version
+    }
+
+    var isComplete: Bool {
+        completionIssues.isEmpty
+    }
+
+    var completionIssues: [String] {
+        var issues: [String] = []
+        if question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("缺少问题")
+        }
+        if contexts.isEmpty {
+            issues.append("缺少检索上下文")
+        }
+        if answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("缺少答案")
+        } else {
+            issues.append(contentsOf: answerFormatIssues)
+        }
+        return issues
+    }
+
+    var answerFormatIssues: [String] {
+        let structured = StructuredAnswer.parse(from: answer)
+        var issues: [String] = []
+        if structured.conclusion?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            issues.append("答案缺少 `Conclusion` 段落")
+        }
+        if structured.evidence?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            issues.append("答案缺少 `Evidence` 段落")
+        }
+        if structured.citations?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            issues.append("答案缺少 `Citations` 段落")
+        }
+        if structured.reminder?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            issues.append("答案缺少 `Risk note` 段落")
+        }
+        return issues
+    }
+
+    static let answerTemplate = """
+    Conclusion: 
+    Evidence: 
+    Citations: 
+    Risk note: 
+    """
+}
+
+enum TrainingAutosaveState: Equatable {
+    case idle
+    case pending
+    case saving
+    case saved(String)
+    case failed(String)
+
+    var message: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .pending:
+            return "有未保存修改，等待自动保存。"
+        case .saving:
+            return "正在自动保存。"
+        case .saved(let message), .failed(let message):
+            return message
+        }
+    }
+}
+
 enum ServiceState: Equatable {
     case booting(String)
     case ready
@@ -231,32 +409,55 @@ struct StructuredAnswer {
             )
         }
 
-        let labels = [
-            ("结论：", "结论"),
-            ("依据：", "依据"),
-            ("引用：", "引用"),
-            ("提醒：", "提醒"),
+        let labels: [(aliases: [String], key: String)] = [
+            (["结论：", "Conclusion:"], "结论"),
+            (["依据：", "Evidence:"], "依据"),
+            (["引用：", "Citations:"], "引用"),
+            (["提醒：", "Risk note:"], "提醒"),
         ]
 
+        func firstMatch(
+            for aliases: [String],
+            in content: String,
+            range: Range<String.Index>? = nil
+        ) -> (range: Range<String.Index>, alias: String)? {
+            let searchRange = range ?? content.startIndex..<content.endIndex
+            var best: (range: Range<String.Index>, alias: String)?
+            for alias in aliases {
+                guard let found = content.range(of: alias, options: [.caseInsensitive], range: searchRange) else {
+                    continue
+                }
+                if let best, found.lowerBound >= best.range.lowerBound {
+                    continue
+                }
+                best = (found, alias)
+            }
+            return best
+        }
+
         var extracted: [String: String] = [:]
-        for (index, (_, shortLabel)) in labels.enumerated() {
-            guard let startRange = normalized.range(of: labels[index].0) else {
+        for (index, label) in labels.enumerated() {
+            guard let startMatch = firstMatch(for: label.aliases, in: normalized) else {
                 continue
             }
 
-            let contentStart = startRange.upperBound
+            let contentStart = startMatch.range.upperBound
             var contentEnd = normalized.endIndex
 
             for nextIndex in labels.index(after: index)..<labels.count {
-                if let nextRange = normalized.range(of: labels[nextIndex].0, range: contentStart..<normalized.endIndex) {
-                    contentEnd = nextRange.lowerBound
+                if let nextMatch = firstMatch(
+                    for: labels[nextIndex].aliases,
+                    in: normalized,
+                    range: contentStart..<normalized.endIndex
+                ) {
+                    contentEnd = nextMatch.range.lowerBound
                     break
                 }
             }
 
             let value = normalized[contentStart..<contentEnd]
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            extracted[shortLabel] = value
+            extracted[label.key] = value
         }
 
         return StructuredAnswer(

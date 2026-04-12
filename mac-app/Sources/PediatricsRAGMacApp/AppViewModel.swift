@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
@@ -25,11 +26,30 @@ final class AppViewModel: ObservableObject {
     @Published var isImportingDocument = false
     @Published var deletingDocumentIDs: Set<String> = []
     @Published var replacingDocumentIDs: Set<String> = []
+    @Published var trainingSamples: [TrainingSample] = []
+    @Published var selectedTrainingSampleID: String?
+    @Published var trainingDraft: TrainingSample?
+    @Published var trainingSearchText = ""
+    @Published var trainingStatusFilter: TrainingSampleFilter = .all
+    @Published var trainingErrorMessage = ""
+    @Published var trainingInfoMessage = ""
+    @Published var isLoadingTrainingSamples = false
+    @Published var isSavingTrainingSample = false
+    @Published var isRefreshingTrainingContexts = false
+    @Published var isExportingTrainingSnapshot = false
+    @Published var isBuildingTrainingDataset = false
+    @Published var trainingDatabasePath = ""
+    @Published var trainingSnapshotPath = ""
+    @Published var trainingDatasetPath = ""
+    @Published var trainingAutosaveState: TrainingAutosaveState = .idle
 
     private let service = PythonService()
     private let webService = WebService()
     private var bootTask: Task<Void, Never>?
     private var logRefreshTask: Task<Void, Never>?
+    private var trainingAutosaveTask: Task<Void, Never>?
+    private var projectRootURL: URL?
+    private var trainingStore: TrainingDataStore?
 
     var canAsk: Bool {
         if case .ready = serviceState {
@@ -78,6 +98,37 @@ final class AppViewModel: ObservableObject {
         webService.webURL.absoluteString
     }
 
+    var filteredTrainingSamples: [TrainingSample] {
+        let search = trainingSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return trainingSamples.filter { sample in
+            let matchesStatus = trainingStatusFilter.status.map { sample.status == $0 } ?? true
+            let matchesSearch = search.isEmpty
+                || sample.sampleID.lowercased().contains(search)
+                || sample.question.lowercased().contains(search)
+            return matchesStatus && matchesSearch
+        }
+    }
+
+    var selectedTrainingSample: TrainingSample? {
+        guard let selectedTrainingSampleID else { return nil }
+        return trainingSamples.first(where: { $0.sampleID == selectedTrainingSampleID })
+    }
+
+    var hasUnsavedTrainingChanges: Bool {
+        guard let draft = trainingDraft, let selectedTrainingSample else {
+            return false
+        }
+        return draft != selectedTrainingSample
+    }
+
+    var canMarkTrainingSampleDone: Bool {
+        trainingDraft?.isComplete ?? false
+    }
+
+    var trainingCompletionIssues: [String] {
+        trainingDraft?.completionIssues ?? []
+    }
+
     init() {
         start()
     }
@@ -85,6 +136,7 @@ final class AppViewModel: ObservableObject {
     func start() {
         bootTask?.cancel()
         logRefreshTask?.cancel()
+        trainingAutosaveTask?.cancel()
         response = nil
         errorMessage = ""
         logs = ""
@@ -139,6 +191,233 @@ final class AppViewModel: ObservableObject {
         question = ""
         response = nil
         errorMessage = ""
+    }
+
+    func binding<Value>(for keyPath: WritableKeyPath<TrainingSample, Value>, default defaultValue: Value) -> Binding<Value> {
+        Binding(
+            get: { self.trainingDraft?[keyPath: keyPath] ?? defaultValue },
+            set: { newValue in
+                self.updateTrainingDraft { draft in
+                    draft[keyPath: keyPath] = newValue
+                }
+            }
+        )
+    }
+
+    var trainingStatusBinding: Binding<TrainingSampleStatus> {
+        Binding(
+            get: { self.trainingDraft?.status ?? .draft },
+            set: { newValue in
+                guard self.trainingDraft != nil else { return }
+                if newValue == .done && !(self.trainingDraft?.isComplete ?? false) {
+                    let issues = self.trainingCompletionIssues.joined(separator: "、")
+                    self.trainingErrorMessage = "当前样本不能标记为 done：\(issues)。"
+                    return
+                }
+                self.updateTrainingDraft { draft in
+                    draft.status = newValue
+                }
+            }
+        )
+    }
+
+    func selectTrainingSample(_ sampleID: String?) {
+        guard sampleID != selectedTrainingSampleID else {
+            return
+        }
+
+        do {
+            try persistTrainingDraftIfNeeded()
+            trainingAutosaveTask?.cancel()
+            trainingAutosaveState = .idle
+            selectedTrainingSampleID = sampleID
+            trainingDraft = trainingSamples.first(where: { $0.sampleID == sampleID })
+            trainingErrorMessage = ""
+        } catch {
+            trainingErrorMessage = "切换样本失败：\(error.localizedDescription)"
+        }
+    }
+
+    func refreshTrainingSamples(reselect sampleID: String? = nil) {
+        guard let trainingStore else {
+            trainingErrorMessage = "Training store 尚未初始化。"
+            return
+        }
+
+        isLoadingTrainingSamples = true
+        do {
+            let currentSelection = sampleID ?? selectedTrainingSampleID
+            trainingSamples = try trainingStore.fetchSamples()
+            trainingDatabasePath = trainingStore.databasePath
+            trainingSnapshotPath = trainingStore.snapshotPath
+            trainingDatasetPath = trainingStore.datasetPath
+
+            let resolvedSelection = currentSelection.flatMap { id in
+                trainingSamples.first(where: { $0.sampleID == id })?.sampleID
+            } ?? trainingSamples.first?.sampleID
+
+            selectedTrainingSampleID = resolvedSelection
+            trainingDraft = trainingSamples.first(where: { $0.sampleID == resolvedSelection })
+            if !hasUnsavedTrainingChanges {
+                trainingAutosaveState = .idle
+            }
+            trainingErrorMessage = ""
+        } catch {
+            trainingErrorMessage = "读取训练数据失败：\(error.localizedDescription)"
+        }
+        isLoadingTrainingSamples = false
+    }
+
+    func createTrainingSample() {
+        guard let trainingStore else { return }
+
+        do {
+            try persistTrainingDraftIfNeeded()
+            let sample = try trainingStore.createSample()
+            refreshTrainingSamples(reselect: sample.sampleID)
+            if trainingDraft?.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                insertAnswerTemplate()
+            }
+            trainingInfoMessage = "已创建样本 \(sample.sampleID)。"
+        } catch {
+            trainingErrorMessage = "新建样本失败：\(error.localizedDescription)"
+        }
+    }
+
+    func duplicateSelectedTrainingSample() {
+        guard let trainingStore, let selectedTrainingSampleID else { return }
+
+        do {
+            try persistTrainingDraftIfNeeded()
+            let sample = try trainingStore.duplicateSample(sampleID: selectedTrainingSampleID)
+            refreshTrainingSamples(reselect: sample.sampleID)
+            trainingInfoMessage = "已复制为 \(sample.sampleID)。"
+        } catch {
+            trainingErrorMessage = "复制样本失败：\(error.localizedDescription)"
+        }
+    }
+
+    func saveTrainingSample() {
+        do {
+            try persistTrainingDraftIfNeeded(force: true)
+        } catch {
+            trainingErrorMessage = "保存样本失败：\(error.localizedDescription)"
+        }
+    }
+
+    func insertAnswerTemplate(force: Bool = false) {
+        guard let draft = trainingDraft else { return }
+
+        let trimmedAnswer = draft.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !force && !trimmedAnswer.isEmpty {
+            trainingErrorMessage = "答案已存在内容；如需覆盖，先清空后再插入模板。"
+            return
+        }
+
+        updateTrainingDraft { draft in
+            draft.answer = TrainingSample.answerTemplate
+        }
+        trainingInfoMessage = "已插入答案模板。"
+    }
+
+    func markSelectedTrainingSampleDone() {
+        guard trainingDraft != nil else { return }
+        guard canMarkTrainingSampleDone else {
+            let issues = trainingCompletionIssues.joined(separator: "、")
+            trainingErrorMessage = "当前样本不能标记为 done：\(issues)。"
+            return
+        }
+        updateTrainingDraft { draft in
+            draft.status = .done
+        }
+        saveTrainingSample()
+    }
+
+    func deleteSelectedTrainingSample() {
+        guard let trainingStore, let selectedTrainingSampleID else { return }
+
+        do {
+            try trainingStore.softDeleteSample(sampleID: selectedTrainingSampleID)
+            refreshTrainingSamples()
+            trainingInfoMessage = "已删除样本 \(selectedTrainingSampleID)。"
+        } catch {
+            trainingErrorMessage = "删除样本失败：\(error.localizedDescription)"
+        }
+    }
+
+    func refreshSelectedTrainingContexts() {
+        guard let projectRootURL, let selectedTrainingSampleID else { return }
+
+        Task {
+            do {
+                trainingAutosaveTask?.cancel()
+                try persistTrainingDraftIfNeeded()
+                isRefreshingTrainingContexts = true
+                trainingErrorMessage = ""
+                let output = try await PythonTaskRunner().run(
+                    module: "scripts.refresh_training_contexts",
+                    arguments: [
+                        "--db-path", trainingDatabasePath,
+                        "--sample-id", selectedTrainingSampleID,
+                        "--top-k", String(Int(topK.rounded()))
+                    ],
+                    projectRoot: projectRootURL
+                )
+                refreshTrainingSamples(reselect: selectedTrainingSampleID)
+                trainingInfoMessage = output
+            } catch {
+                trainingErrorMessage = "刷新 contexts 失败：\(error.localizedDescription)"
+            }
+            isRefreshingTrainingContexts = false
+        }
+    }
+
+    func exportTrainingSnapshot() {
+        guard let projectRootURL else { return }
+
+        Task {
+            do {
+                trainingAutosaveTask?.cancel()
+                try persistTrainingDraftIfNeeded()
+                isExportingTrainingSnapshot = true
+                trainingErrorMessage = ""
+                let output = try await PythonTaskRunner().run(
+                    module: "scripts.export_training_snapshot",
+                    arguments: ["--db-path", trainingDatabasePath, "--output", trainingSnapshotPath],
+                    projectRoot: projectRootURL
+                )
+                trainingInfoMessage = output
+            } catch {
+                trainingErrorMessage = "导出快照失败：\(error.localizedDescription)"
+            }
+            isExportingTrainingSnapshot = false
+        }
+    }
+
+    func buildTrainingDataset() {
+        guard let projectRootURL else { return }
+
+        Task {
+            do {
+                trainingAutosaveTask?.cancel()
+                try persistTrainingDraftIfNeeded()
+                isBuildingTrainingDataset = true
+                trainingErrorMessage = ""
+                let output = try await PythonTaskRunner().run(
+                    module: "scripts.build_sft_dataset",
+                    arguments: [
+                        "--input-sqlite", trainingDatabasePath,
+                        "--output", trainingDatasetPath,
+                        "--format", "messages"
+                    ],
+                    projectRoot: projectRootURL
+                )
+                trainingInfoMessage = output
+            } catch {
+                trainingErrorMessage = "生成训练集失败：\(error.localizedDescription)"
+            }
+            isBuildingTrainingDataset = false
+        }
     }
 
     func refreshKnowledgeBase() {
@@ -280,7 +559,9 @@ final class AppViewModel: ObservableObject {
     private func bootService() async {
         do {
             let root = try discoverProjectRoot()
+            projectRootURL = root
             projectRootPath = root.path
+            setupTrainingWorkspace(root)
             try service.start(projectRoot: root)
             logFilePath = service.logFileURL?.path ?? ""
             startRefreshingLogs()
@@ -424,6 +705,78 @@ final class AppViewModel: ObservableObject {
             vectorIndexStatus = try await indexStatusTask
         } catch {
             knowledgeBaseErrorMessage = "刷新 Knowledge Base 失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func setupTrainingWorkspace(_ projectRoot: URL) {
+        do {
+            let store = try TrainingDataStore(projectRoot: projectRoot)
+            trainingStore = store
+            trainingDatabasePath = store.databasePath
+            trainingSnapshotPath = store.snapshotPath
+            trainingDatasetPath = store.datasetPath
+            refreshTrainingSamples()
+        } catch {
+            trainingErrorMessage = "初始化训练数据失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func updateTrainingDraft(_ mutate: (inout TrainingSample) -> Void) {
+        guard var draft = trainingDraft else { return }
+        mutate(&draft)
+        trainingDraft = draft
+        trainingInfoMessage = ""
+        trainingErrorMessage = ""
+        scheduleTrainingAutosave()
+    }
+
+    private func scheduleTrainingAutosave() {
+        guard hasUnsavedTrainingChanges else {
+            trainingAutosaveTask?.cancel()
+            trainingAutosaveState = .idle
+            return
+        }
+
+        trainingAutosaveTask?.cancel()
+        trainingAutosaveState = .pending
+        let sampleID = trainingDraft?.sampleID
+
+        trainingAutosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(1200))
+                guard let self else { return }
+                guard !Task.isCancelled else { return }
+                guard sampleID == self.trainingDraft?.sampleID else { return }
+                try self.persistTrainingDraftIfNeeded(auto: true)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self else { return }
+                self.trainingAutosaveState = .failed("自动保存失败：\(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func persistTrainingDraftIfNeeded(force: Bool = false, auto: Bool = false) throws {
+        guard let trainingStore, let draft = trainingDraft else {
+            return
+        }
+        guard force || hasUnsavedTrainingChanges else {
+            return
+        }
+
+        isSavingTrainingSample = true
+        if auto {
+            trainingAutosaveState = .saving
+        }
+        defer { isSavingTrainingSample = false }
+        try trainingStore.saveSample(draft)
+        refreshTrainingSamples(reselect: draft.sampleID)
+        if auto {
+            trainingAutosaveState = .saved("已自动保存 \(draft.sampleID)。")
+        } else {
+            trainingAutosaveState = .saved("已保存 \(draft.sampleID)。")
+            trainingInfoMessage = "已保存 \(draft.sampleID)。"
         }
     }
 }

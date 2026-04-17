@@ -1,0 +1,93 @@
+[
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c000",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "# Training Strategy\n\n## Goal\n\nThis project uses RAG to supply external knowledge and LoRA/QLoRA to stabilize answer behavior.\nThe fine-tuning target is not to memorize pediatric knowledge. The target is to improve:\n\n1. Answer format consistency\n2. Citation formatting\n3. Refusal behavior when evidence is insufficient\n4. Risk reminder consistency for sensitive questions\n\n## Engineering Choice\n\nFor local training on a single RTX 4080, the preferred implementation is:",
+    "text_hash": "a8fc3c758b5560342dfadffcabf3e2517a5e5ea9"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c001",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "## Engineering Choice\n\nFor local training on a single RTX 4080, the preferred implementation is:\n\n1. `Unsloth`\n2. Base model: `Qwen2.5-7B-Instruct` or `Qwen3-8B`\n3. Training method: `QLoRA` with 4-bit loading\n\nReason:\n\n1. Lower VRAM usage\n2. Faster iteration on a single GPU\n3. Less setup overhead than a fully manual Hugging Face stack\n\n## Explanation Choice\n\nFor interviews and technical writeups, explain the training pipeline as a standard QLoRA stack:",
+    "text_hash": "e562b40e341a8b42aa61880343c1628db5d5c880"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c002",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "For interviews and technical writeups, explain the training pipeline as a standard QLoRA stack:\n\n1. `transformers` loads the base model and tokenizer\n2. `bitsandbytes` loads the frozen base model in 4-bit\n3. `peft` injects LoRA adapters into target linear layers\n4. `trl` or `Trainer` runs supervised fine-tuning\n5. `accelerate` manages single-GPU execution\n\nThis is the conceptual pipeline even if the actual implementation uses `Unsloth`.\n\n## Training Data Contract",
+    "text_hash": "f76f93c8780f8ae4b4f17b1c6e854ca712e290e0"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c003",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "## Training Data Contract\n\nEach sample should teach answer behavior instead of domain memorization.\n\nCanonical storage now lives in a local SQLite database at `data/training_data.sqlite3`.\nThe database is the source of truth for annotation and LoRA preparation workflows.\n\nRequired logical fields per sample:\n\n1. `question`\n2. `contexts`\n3. `answer`\n\nOptional but recommended logical field:\n\n1. `mode`\n\nSupported `mode` values in this repo:",
+    "text_hash": "77e00e9c1e2410d9f8581b0e7f9658ffda2e42b8"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c004",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "Optional but recommended logical field:\n\n1. `mode`\n\nSupported `mode` values in this repo:\n\n1. `grounded_answer`: answer directly from evidence\n2. `insufficient_evidence`: refuse clearly when evidence is not enough\n3. `risk_routing`: answer conservatively and add a safety routing note\n\nRecommended answer format:\n\n1. `Conclusion: ...`\n2. `Evidence: ...`\n3. `Citations: [1][2]`\n4. `Risk note: ...`\n\nIf the evidence is insufficient, the answer should refuse clearly instead of guessing.",
+    "text_hash": "a3edee0710a1ed3d048e8afa70c6aa9ec7c082a0"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c005",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "If the evidence is insufficient, the answer should refuse clearly instead of guessing.\n\n## Architecture Boundary\n\nOnline inference should remain:\n\n1. Retrieve relevant contexts from the vector index\n2. Send `question + contexts` to the generator\n3. Generate the final answer with `base model + LoRA adapter`\n\nThe system should not rely on fine-tuning to store pediatric knowledge.\nKnowledge should remain in the retrieval layer.\n\n## What To Say In Interviews\n\nUse this line consistently:",
+    "text_hash": "e9553fd6a130584c93ce075673c160176c625509"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c006",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "## What To Say In Interviews\n\nUse this line consistently:\n\n`RAG provides external knowledge, while LoRA aligns the model's answering behavior.`\n\nMore detailed explanation:\n\n1. RAG solves factual grounding and source traceability\n2. LoRA improves response structure, citation stability, and refusal behavior\n3. QLoRA makes single-GPU fine-tuning feasible by freezing the base model and training only low-rank adapters on top of 4-bit weights\n\n## Storage Layers",
+    "text_hash": "d7b2e5ce4a8b124d0d935a2828c97652d8d27b3c"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c007",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "## Storage Layers\n\nUse three layers with different responsibilities:\n\n1. `data/training_data.sqlite3`\n This is the annotation source of truth.\n The mac app edits this database directly.\n\n2. `data/sft_annotations.done.jsonl`\n This is an exported snapshot for inspection, backup, or external exchange.\n It is derived from SQLite and is no longer the primary editable store.\n\n3. `data/sft_train.jsonl`\n This is the machine-ready SFT artifact generated from SQLite samples.\n\nRule:",
+    "text_hash": "e4df6c0aefbaaa4cd3f074855d64d7fceb4e8f57"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c008",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "Rule:\n\n1. Edit SQLite\n2. Export snapshot only when needed\n3. Regenerate `train` from SQLite\n4. Do not treat `done` or `train` as the canonical source of truth\n\n## Next Steps\n\n1. Build a manual annotation set from seed questions and retrieved contexts\n2. Fill in high-quality target answers by hand inside the mac app\n3. Generate `sft_train.jsonl` from SQLite\n4. Add a local training script using `Unsloth`\n5. Add answer-quality evaluation before and after fine-tuning",
+    "text_hash": "047823a7849b0ad52d1d1dddac7254a80e3ce5ab"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c009",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "## Practical Workflow In This Repo\n\n1. Prepare seed questions in `data/sft_questions.example.jsonl`\n2. Build a todo annotation set:\n\n```bash\npython -m scripts.build_sft_annotation_set --questions data/sft_questions.example.jsonl --output data/sft_annotations.todo.jsonl --top-k 3\n```\n\n3. Import the todo set into `data/training_data.sqlite3` if needed, or edit samples directly in the mac app.\n\n4. Export a JSONL snapshot when you want a flat-file checkpoint:",
+    "text_hash": "d5427531504a071bffcf2cadc811f410642bb222"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c010",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "4. Export a JSONL snapshot when you want a flat-file checkpoint:\n\n```bash\npython -m scripts.export_training_snapshot --db-path data/training_data.sqlite3 --output data/sft_annotations.done.jsonl\n```\n\n5. Convert SQLite annotations to training format:\n\n```bash\npython -m scripts.build_sft_dataset --input-sqlite data/training_data.sqlite3 --output data/sft_train.jsonl --format messages\n```\n\n## File Roles\n\nKeep both files. They have different purposes:",
+    "text_hash": "ff2704d46edf2cc98fa30da33ef4a4c3e9d28c2a"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c011",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "## File Roles\n\nKeep both files. They have different purposes:\n\n1. `data/training_data.sqlite3`\n This is the human-maintained source database.\n It keeps `sample_id`, `question`, `mode`, `annotation_guideline`, `contexts`, `answer`, `annotation_notes`, and sample lifecycle fields.\n\n2. `data/sft_annotations.done.jsonl`\n This is the exported snapshot view of completed annotations.",
+    "text_hash": "46d0c535aac6cd313b19fbc80c9bd482bdab78cf"
+  },
+  {
+    "chunk_id": "training-strategy-17be78e8-p0001-c012",
+    "source": "docs/training_strategy.md",
+    "page": 1,
+    "text": "2. `data/sft_annotations.done.jsonl`\n This is the exported snapshot view of completed annotations.\n\n3. `data/sft_train.jsonl`\n This is the machine-ready training artifact.\n It is generated from SQLite and should be used directly by SFT / Unsloth training code.",
+    "text_hash": "1faebb844e6b3cc83460cfb899be94cc3673de4d"
+  }
+]

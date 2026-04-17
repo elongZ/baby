@@ -114,7 +114,7 @@ def generate_iconset(output_dir: Path) -> None:
 
 def main() -> None:
     repo_root = Path(__file__).resolve().parent.parent
-    output_dir = repo_root / "mac-app" / "AppIcon.iconset"
+    output_dir = repo_root / "apps" / "mac" / "mac-app" / "AppIcon.iconset"
     generate_iconset(output_dir)
     print(output_dir)
 

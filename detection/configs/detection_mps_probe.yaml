@@ -1,0 +1,33 @@
+project:
+  name: baby-detection
+  task: object_detection
+  output_dir: detection/outputs/probes
+  run_name: probe_mps
+data:
+  image_dir: detection/datasets/images
+  label_dir: detection/datasets/labels
+  format: yolo
+  train_dir: detection/datasets/images/train
+  val_dir: detection/datasets/images/val
+  test_dir: detection/datasets/images/test
+  workers: 0
+classes:
+  names:
+  - diaper
+  - stroller
+train:
+  model_name: yolov8n.pt
+  device: mps
+  image_size: 640
+  batch_size: 4
+  epochs: 1
+  patience: 1
+eval:
+  split: test
+  confidence_threshold: 0.001
+  iou_threshold: 0.7
+  save_json: false
+infer:
+  confidence_threshold: 0.85
+  iou_threshold: 0.7
+  save_dir: detection/outputs/predict

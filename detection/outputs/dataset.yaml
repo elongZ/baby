@@ -1,0 +1,7 @@
+path: /Users/macmain/Documents/baby
+train: /Users/macmain/Documents/baby/detection/datasets/images/train
+val: /Users/macmain/Documents/baby/detection/datasets/images/val
+test: /Users/macmain/Documents/baby/detection/datasets/images/test
+names:
+  0: diaper
+  1: stroller

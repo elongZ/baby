@@ -115,8 +115,8 @@ def main() -> None:
     args = parse_args()
 
     embedding_model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-zh-v1.5")
-    faiss_index_path = os.getenv("FAISS_INDEX_PATH", "vector_db/faiss.index")
-    chunks_path = os.getenv("CHUNKS_PATH", "vector_db/chunks.json")
+    faiss_index_path = os.getenv("FAISS_INDEX_PATH", "workspace/vector_db/faiss.index")
+    chunks_path = os.getenv("CHUNKS_PATH", "workspace/vector_db/chunks.json")
     reranker_model = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-base")
 
     retriever = Retriever(

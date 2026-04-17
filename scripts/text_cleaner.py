@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+TEXT_CLEANER_VERSION = "2026-04-13-a"
+
 
 def clean_text(raw_text: str) -> str:
     text = raw_text

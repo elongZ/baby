@@ -1,0 +1,8 @@
+{
+  "weights": "runs/detect/detection/outputs/exp1/weights/best.pt",
+  "split": "test",
+  "map50": 0.6009840250329381,
+  "map50_95": 0.3735245410709817,
+  "mp": 0.008541922380626682,
+  "mr": 1.0
+}

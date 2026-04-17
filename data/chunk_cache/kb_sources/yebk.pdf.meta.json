@@ -1,0 +1,10 @@
+{
+  "source": "yebk.pdf",
+  "source_path": "/Users/macmain/Documents/baby/kb_sources/yebk.pdf",
+  "source_size": 40815172,
+  "source_mtime_ns": 1775885026261605124,
+  "chunk_size": 500,
+  "chunk_overlap": 100,
+  "cleaner_version": "2026-04-13-a",
+  "splitter_version": "2026-04-13-a"
+}

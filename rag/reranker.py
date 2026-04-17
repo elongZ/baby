@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from sentence_transformers import CrossEncoder
+from typing import Any
+
+try:
+    from sentence_transformers import CrossEncoder
+except Exception:  # pragma: no cover - optional dependency
+    CrossEncoder = Any
 
 
 class Reranker:

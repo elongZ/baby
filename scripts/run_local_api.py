@@ -29,7 +29,7 @@ def discover_project_root() -> Path:
             return path
 
     for candidate in _candidate_roots():
-        if (candidate / "api").exists() and (candidate / "rag").exists() and (candidate / "requirements.txt").exists():
+        if (candidate / "rag" / "api").exists() and (candidate / "rag").exists() and (candidate / "requirements" / "base.txt").exists():
             return candidate
 
     raise RuntimeError(
@@ -47,7 +47,7 @@ def main() -> None:
     log_level = os.getenv("BABY_APP_API_LOG_LEVEL", "warning")
 
     uvicorn.run(
-        "api.main:app",
+        "rag.api.main:app",
         host=host,
         port=port,
         reload=False,

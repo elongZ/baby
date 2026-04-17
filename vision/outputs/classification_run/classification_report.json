@@ -1,0 +1,27 @@
+{
+  "diaper": {
+    "precision": 0.9565217391304348,
+    "recall": 1.0,
+    "f1-score": 0.9777777777777777,
+    "support": 22.0
+  },
+  "stroller": {
+    "precision": 1.0,
+    "recall": 0.96,
+    "f1-score": 0.9795918367346939,
+    "support": 25.0
+  },
+  "accuracy": 0.9787234042553191,
+  "macro avg": {
+    "precision": 0.9782608695652174,
+    "recall": 0.98,
+    "f1-score": 0.9786848072562357,
+    "support": 47.0
+  },
+  "weighted avg": {
+    "precision": 0.9796484736355227,
+    "recall": 0.9787234042553191,
+    "f1-score": 0.9787427027548607,
+    "support": 47.0
+  }
+}

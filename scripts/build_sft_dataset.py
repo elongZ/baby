@@ -10,8 +10,7 @@ from scripts.training_store import DEFAULT_DB_PATH, fetch_samples, initialize_da
 SYSTEM_PROMPT = (
     "You are a pediatric knowledge assistant. "
     "Answer strictly based on the provided contexts. "
-    "If the evidence is insufficient, say so clearly and do not guess. "
-    "Use the required answer format."
+    "If the evidence is insufficient, say so clearly and do not guess."
 )
 
 
@@ -78,11 +77,8 @@ def build_user_prompt(question: str, contexts: list[dict], mode: str) -> str:
         f"{mode_instruction}\n\n"
         f"Question:\n{question}\n\n"
         f"Contexts:\n{context_block}\n\n"
-        "Required answer format:\n"
-        "Conclusion: ...\n"
-        "Evidence: ...\n"
-        "Citations: [1][2]\n"
-        "Risk note: ..."
+        "Write a concise answer grounded in the provided contexts. "
+        "If the evidence is insufficient, say so clearly and do not guess."
     )
 
 

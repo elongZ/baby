@@ -25,8 +25,8 @@ def main() -> None:
 
     retriever = Retriever(
         embedding_model=os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-zh-v1.5"),
-        index_path=os.getenv("FAISS_INDEX_PATH", "vector_db/faiss.index"),
-        chunks_path=os.getenv("CHUNKS_PATH", "vector_db/chunks.json"),
+        index_path=os.getenv("FAISS_INDEX_PATH", "workspace/vector_db/faiss.index"),
+        chunks_path=os.getenv("CHUNKS_PATH", "workspace/vector_db/chunks.json"),
     )
 
     contexts = retriever.search(sample.question, top_k=args.top_k)

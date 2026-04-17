@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+SPLITTER_VERSION = "2026-04-13-a"
+
 
 @dataclass
 class ChunkConfig:

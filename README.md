@@ -6,33 +6,35 @@
 
 ```text
 baby/
-├── api/
-│   └── main.py
+├── apps/
+│   └── mac/
+│       ├── desktop/
+│       └── mac-app/
 ├── data/
-│   └── .gitkeep
+│   ├── training_data.sqlite3
+│   └── *.jsonl
+├── detection/
 ├── docs/
-│   └── training_strategy.md
-├── mac-app/
-│   └── Package.swift
 ├── rag/
-│   ├── __init__.py
-│   ├── generator.py
-│   ├── pipeline.py
-│   └── retriever.py
+├── requirements/
+│   ├── base.txt
+│   ├── runtime.txt
+│   ├── desktop.txt
+│   └── train.txt
 ├── scripts/
-│   ├── __init__.py
-│   ├── build_kb.py
-│   ├── chunk_splitter.py
-│   ├── embedding_builder.py
-│   ├── pdf_loader.py
-│   └── text_cleaner.py
-├── vector_db/
-│   └── .gitkeep
-├── web/
-│   └── app.py
+│   ├── dev/
+│   └── *.py / *.sh
+├── vision/
+├── workspace/
+│   ├── kb_sources/
+│   ├── vector_db/
+│   ├── outputs/
+│   ├── dist/
+│   ├── tmp/
+│   └── app-logs/
 ├── .env.example
 ├── .gitignore
-└── requirements.txt
+└── README.md
 ```
 
 ## 2. 快速开始
@@ -40,12 +42,15 @@ baby/
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements/base.txt
 cp .env.example .env
 ```
 
-1. 把要入库的资料放到 `kb_sources/`
-   - 当前自动支持：`.pdf`、`.txt`、`.md`
+1. 把要入库的资料放到 `workspace/kb_sources/`
+   - 当前自动支持：`.pdf`、`.docx`、`.png`、`.jpg`、`.jpeg`、`.jp2`、`.webp`、`.gif`、`.bmp`、`.tiff`、`.txt`、`.md`、`.pptx`、`.xlsx`、`.xls`、`.html`、`.htm`、`.csv`、`.json`、`.xml`、`.epub`
+   - `PDF`、图片和 `DOCX` 通过 `MinerU` 转成 Markdown 后再入库；其他支持格式通过 `markitdown-mcp` 转换
+   - 转换结果会缓存到 `data/converted_sources/`，源文件未变化时会直接复用缓存，不重复跑 MinerU / MCP
+   - 清洗和切块结果会缓存到 `data/chunk_cache/`，源文件、切块参数或 cleaner/splitter 版本未变化时会直接复用
    - 启动 API 时会自动过滤隐藏文件和不支持的文件类型
 2. 手动构建/刷新知识库（可选）：
 
@@ -56,27 +61,27 @@ python -m scripts.build_kb
 3. 安装桌面运行依赖：
 
 ```bash
-pip install -r requirements-runtime.txt
+pip install -r requirements/runtime.txt
 ```
 
 4. 启动 SwiftUI mac App（默认入口）：
 
 ```bash
-cd mac-app
+cd apps/mac/mac-app
 swift run
 ```
 
-SwiftUI App 会自动拉起本地 Python FastAPI 服务，启动时自动扫描 `KB_SOURCE_DIR`（默认 `kb_sources/`），如果检测到新增、删除或修改过的资料文件，就自动重建向量库；如果资料没有变化，则直接复用现有索引。初始化完成后即可直接提问，不需要再单独启动 API 和 Web。
+SwiftUI App 会自动拉起本地 Python FastAPI 服务，启动时自动扫描 `KB_SOURCE_DIR`（默认 `workspace/kb_sources/`），如果检测到新增、删除或修改过的资料文件，就自动重建向量库；如果资料没有变化，则直接复用现有索引。初始化完成后即可直接提问，不需要再单独启动 API 和 Web。
 
 5. 打包成可双击启动的 `.app`：
 
 ```bash
 chmod +x scripts/build_swiftui_app.sh
 ./scripts/build_swiftui_app.sh
-open dist/PediatricsRAGMacApp.app
+open workspace/dist/PediatricsRAGMacApp.app
 ```
 
-打包产物位于 `dist/PediatricsRAGMacApp.app`，双击即可启动。
+打包产物位于 `workspace/dist/PediatricsRAGMacApp.app`，双击即可启动。
 
 6. 单独启动本地 API（可选）：
 
@@ -154,7 +159,7 @@ python -m scripts.eval_retrieval --dataset data/eval_set.jsonl --top-k 3 --retri
 安装训练依赖：
 
 ```bash
-pip install -r requirements-train.txt
+pip install -r requirements/train.txt
 ```
 
 启动本地 QLoRA 训练：
@@ -163,7 +168,7 @@ pip install -r requirements-train.txt
 python -m scripts.train_lora \
   --input data/sft_train.jsonl \
   --model-name Qwen/Qwen2.5-7B-Instruct \
-  --output-dir outputs/lora-qwen2.5-7b \
+  --output-dir workspace/outputs/lora-qwen2.5-7b \
   --load-in-4bit \
   --bf16
 ```
@@ -181,7 +186,7 @@ MacBook（Apple Silicon）说明：
 python -m scripts.train_lora \
   --input data/sft_train.jsonl \
   --model-name Qwen/Qwen2.5-1.5B-Instruct \
-  --output-dir outputs/lora-qwen2.5-1.5b-mac \
+  --output-dir workspace/outputs/lora-qwen2.5-1.5b-mac \
   --backend transformers \
   --fp16 \
   --batch-size 1 \
@@ -192,8 +197,8 @@ python -m scripts.train_lora \
 
 ```bash
 export LLM_MODEL=Qwen/Qwen2.5-0.5B-Instruct
-export LORA_ADAPTER_PATH=/Users/macmain/Documents/baby/outputs/lora-qwen2.5-0.5b-full
-uvicorn api.main:app --reload
+export LORA_ADAPTER_PATH=/Users/macmain/Documents/baby/workspace/outputs/lora-qwen2.5-0.5b-full
+uvicorn rag.api.main:app --reload
 ```
 
 如果设置了 `LORA_ADAPTER_PATH`，API 会加载本地 `base model + LoRA adapter`；
@@ -207,7 +212,7 @@ python -m scripts.export_training_snapshot --db-path data/training_data.sqlite3 
 python -m scripts.build_sft_dataset --input-sqlite data/training_data.sqlite3 --output data/sft_train.jsonl --format messages
 ```
 
-如果使用根目录的 `yebk.pdf` 作为当前知识源，可直接使用我生成的种子问题：
+如果使用 `workspace/kb_sources/yebk.pdf` 作为当前知识源，可直接使用我生成的种子问题：
 
 ```bash
 python -m scripts.build_sft_annotation_set --questions data/sft_questions.yebk.jsonl --output data/sft_annotations.todo.jsonl --top-k 3

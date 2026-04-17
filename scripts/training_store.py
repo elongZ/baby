@@ -189,7 +189,7 @@ def fetch_samples(
                annotation_notes, status, source_type, created_at, updated_at, deleted_at, version
         FROM training_samples
         WHERE {' AND '.join(where)}
-        ORDER BY updated_at DESC, sample_id ASC
+        ORDER BY CAST(SUBSTR(sample_id, 5) AS INTEGER) DESC, updated_at DESC
     """
     with connect(db_path) as conn:
         rows = conn.execute(sql, params).fetchall()

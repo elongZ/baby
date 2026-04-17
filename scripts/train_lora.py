@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="outputs/lora-qwen2.5-7b",
+        default="workspace/outputs/lora-qwen2.5-7b",
         help="Directory to save LoRA adapter and tokenizer",
     )
     parser.add_argument(

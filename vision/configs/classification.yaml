@@ -1,0 +1,54 @@
+project:
+  name: baby-vision-classification
+  task: image_classification
+  output_dir: vision/outputs/classification_run
+data:
+  raw_dir: vision/datasets/raw
+  processed_dir: vision/datasets/processed
+  split_dir: vision/datasets/splits
+  train_dir: vision/datasets/splits/train
+  val_dir: vision/datasets/splits/val
+  test_dir: vision/datasets/splits/test
+  image_size: 224
+  num_workers: 0
+classes:
+  names:
+  - diaper
+  - stroller
+split:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  shuffle: true
+  random_seed: 42
+train:
+  model_name: resnet18
+  pretrained: true
+  batch_size: 8
+  epochs: 5
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  device: auto
+  save_best_only: true
+  checkpoint_name: best_model.pt
+augmentation:
+  enable: true
+  horizontal_flip: 0.5
+  rotation_degree: 10
+  color_jitter:
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.2
+    hue: 0.05
+eval:
+  average: macro
+  save_confusion_matrix: true
+  confusion_matrix_name: confusion_matrix.png
+  report_name: classification_report.json
+infer:
+  rejection_mode: prototype
+  top_k: 3
+  reject_threshold: 0.95
+  prototype_path: vision/outputs/classification_run/prototypes.json
+  prototype_similarity_threshold: 0.96
+  save_visualization: false

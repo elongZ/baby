@@ -32,7 +32,7 @@ def discover_project_root() -> Path:
             return path
 
     for candidate in _candidate_roots():
-        if (candidate / "api").exists() and (candidate / "web").exists() and (candidate / "requirements.txt").exists():
+        if (candidate / "rag" / "api").exists() and (candidate / "rag" / "web").exists() and (candidate / "requirements" / "base.txt").exists():
             return candidate
 
     raise RuntimeError(
@@ -78,11 +78,11 @@ def main() -> None:
                 "Streamlit is not installed in the current Python environment, and no `streamlit` executable was found in PATH.",
                 file=sys.stderr,
             )
-            print("Install it with `pip install -r requirements.txt`.", file=sys.stderr)
+            print("Install it with `pip install -r requirements/base.txt`.", file=sys.stderr)
             raise SystemExit(1)
-        cmd = [streamlit_launcher, "run", "web/app.py"]
+        cmd = [streamlit_launcher, "run", "rag/web/app.py"]
     else:
-        cmd = [sys.executable, "-m", "streamlit", "run", "web/app.py"]
+        cmd = [sys.executable, "-m", "streamlit", "run", "rag/web/app.py"]
 
     try:
         subprocess.run(cmd, cwd=project_root, env=env, check=True)

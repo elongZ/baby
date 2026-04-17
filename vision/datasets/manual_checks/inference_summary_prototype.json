@@ -1,0 +1,189 @@
+[
+  {
+    "image": "expected_diaper_01.jpg",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.988,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.988,
+      "stroller": 0.356
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9905,
+    "softmax_scores": {
+      "diaper": 0.9905,
+      "stroller": 0.0095
+    }
+  },
+  {
+    "image": "expected_diaper_02.jpg",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9825,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9825,
+      "stroller": 0.3989
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9519,
+    "softmax_scores": {
+      "diaper": 0.9519,
+      "stroller": 0.0481
+    }
+  },
+  {
+    "image": "expected_diaper_03.jpg",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9862,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9862,
+      "stroller": 0.2178
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9998,
+    "softmax_scores": {
+      "diaper": 0.9998,
+      "stroller": 0.0002
+    }
+  },
+  {
+    "image": "expected_other_01.jpg",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9943,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9943,
+      "stroller": 0.2944
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9876,
+    "softmax_scores": {
+      "diaper": 0.9876,
+      "stroller": 0.0124
+    }
+  },
+  {
+    "image": "expected_other_02.jpg",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9966,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9966,
+      "stroller": 0.2302
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9964,
+    "softmax_scores": {
+      "diaper": 0.9964,
+      "stroller": 0.0036
+    }
+  },
+  {
+    "image": "expected_other_03.jpg",
+    "final_prediction": "other",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9277,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9277,
+      "stroller": 0.4066
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.8961,
+    "softmax_scores": {
+      "diaper": 0.8961,
+      "stroller": 0.1039
+    }
+  },
+  {
+    "image": "expected_stroller_01.jpg",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9935,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9935,
+      "stroller": 0.2643
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9871,
+    "softmax_scores": {
+      "diaper": 0.9871,
+      "stroller": 0.0129
+    }
+  },
+  {
+    "image": "expected_stroller_02.jpg",
+    "final_prediction": "other",
+    "prototype_best_label": "stroller",
+    "prototype_best_similarity": 0.8859,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.6692,
+      "stroller": 0.8859
+    },
+    "softmax_label": "stroller",
+    "softmax_max_prob": 0.9257,
+    "softmax_scores": {
+      "diaper": 0.0743,
+      "stroller": 0.9257
+    }
+  },
+  {
+    "image": "expected_stroller_03.jpg",
+    "final_prediction": "stroller",
+    "prototype_best_label": "stroller",
+    "prototype_best_similarity": 0.9817,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.2882,
+      "stroller": 0.9817
+    },
+    "softmax_label": "stroller",
+    "softmax_max_prob": 0.9998,
+    "softmax_scores": {
+      "diaper": 0.0002,
+      "stroller": 0.9998
+    }
+  },
+  {
+    "image": "not_target.png",
+    "final_prediction": "other",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.8963,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.8963,
+      "stroller": 0.5031
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9024,
+    "softmax_scores": {
+      "diaper": 0.9024,
+      "stroller": 0.0976
+    }
+  },
+  {
+    "image": "target.png",
+    "final_prediction": "diaper",
+    "prototype_best_label": "diaper",
+    "prototype_best_similarity": 0.9907,
+    "prototype_threshold": 0.96,
+    "prototype_scores": {
+      "diaper": 0.9907,
+      "stroller": 0.2985
+    },
+    "softmax_label": "diaper",
+    "softmax_max_prob": 0.9826,
+    "softmax_scores": {
+      "diaper": 0.9826,
+      "stroller": 0.0174
+    }
+  }
+]

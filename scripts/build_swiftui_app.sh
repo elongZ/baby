@@ -4,8 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="PediatricsRAGMacApp"
-MAC_APP_DIR="$ROOT_DIR/mac-app"
-DIST_DIR="$ROOT_DIR/dist"
+MAC_APP_DIR="$ROOT_DIR/apps/mac/mac-app"
+DIST_DIR="$ROOT_DIR/workspace/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"

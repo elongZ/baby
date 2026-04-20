@@ -1,0 +1,9 @@
+camera_index: 0
+frame_width: 1280
+frame_height: 720
+inference_interval: 3
+mirror: true
+window_name: Detection Camera Demo
+show_fps: true
+line_thickness: 2
+font_scale: 0.6

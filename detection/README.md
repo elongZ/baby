@@ -14,6 +14,7 @@
 - YOLOv8n 检测训练
 - 测试集评测
 - 单图检测推理与可视化
+- OpenCV 摄像头实时检测 demo
 
 ## 1. 当前目标
 
@@ -169,6 +170,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 - 检测训练
 - 测试集评测
 - 单图推理
+- 摄像头实时推理 demo
 
 但当前项目仍然存在明显限制：
 
@@ -176,7 +178,43 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 - `diaper` 与 `stroller` 的图像风格分布不够稳定
 - 小数据集下分数校准偏低，阈值选择会显著影响推理结果
 
-## 5. 后续计划
+## 5. 摄像头实时检测
+
+当前仓库已经补上一个薄的 OpenCV 工程层，用于把现有单图推理入口接到摄像头视频流：
+
+- 服务层：[opencv_service.py](/Users/macmain/Documents/baby/detection/opencv_service.py)
+- demo 脚本：[camera_demo.py](/Users/macmain/Documents/baby/detection/scripts/camera_demo.py)
+- 摄像头配置：[camera.yaml](/Users/macmain/Documents/baby/detection/configs/camera.yaml)
+
+设计原则：
+
+- 继续复用 [service.py](/Users/macmain/Documents/baby/detection/service.py) 的 YOLO 推理逻辑
+- 摄像头层只负责读帧、BGR/RGB 转换、周期性推理、结果叠加
+- 当前阶段不改 mac app UI，不引入网络传输
+
+运行前请先确保当前 Python 环境至少安装：
+
+- `PyYAML`
+- `numpy`
+- `opencv-python`
+- `ultralytics`
+
+示例命令：
+
+```bash
+python -m detection.scripts.camera_demo \
+  --config detection/configs/detection.yaml \
+  --camera-config detection/configs/camera.yaml
+```
+
+默认行为：
+
+- 打开 `camera_index=0`
+- 按 `inference_interval` 每隔 N 帧做一次推理
+- 窗口中显示 bbox、label、confidence、推理 FPS
+- 按 `q` 或 `Esc` 退出
+
+## 6. 后续计划
 
 下一步建议按这个顺序推进：
 
@@ -192,7 +230,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 2. 保持 `test` 集类别定义稳定，避免混入成人纸尿裤、说明图等噪声样本
 3. 在更稳定的数据分布上继续重训
 
-## 6. 标注规范
+## 7. 标注规范
 
 本项目第一期只标注两个类别：
 
@@ -201,7 +239,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 
 除这两个类别之外，其余物体均视为背景，不单独标注，不设置 `other` 检测类。
 
-### 5.1 标注目标
+### 7.1 标注目标
 
 标注任务的目标是让模型学习在图片中定位并识别：
 
@@ -210,7 +248,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 
 第一期只关注主体清晰、类别明确的目标，不追求覆盖所有复杂边界情况。
 
-### 5.2 总体原则
+### 7.2 总体原则
 
 标注时遵循以下原则：
 
@@ -220,7 +258,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 - 不要标极小、极模糊、极难判断的目标
 - 多个目标可分别标注多个框
 
-### 5.3 diaper 标注规则
+### 7.3 diaper 标注规则
 
 以下情况标注为 `diaper`：
 
@@ -234,7 +272,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 - 图中只是宣传海报或远处小图
 - 主体过小、过模糊或被严重遮挡
 
-### 5.4 stroller 标注规则
+### 7.4 stroller 标注规则
 
 以下情况标注为 `stroller`：
 

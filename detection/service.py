@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from detection.scripts.common import (
@@ -10,6 +11,11 @@ from detection.scripts.common import (
     resolve_run_dir,
     resolve_weights_path,
 )
+
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional dependency for frame inference
+    np = None
 
 
 def _format_detection_ratio(value: float) -> str:
@@ -98,6 +104,149 @@ def _build_detection_explanation(
     return " ".join(explanation_parts), " ".join(inspection_parts)
 
 
+def _resolve_effective_thresholds(
+    config: dict,
+    confidence_threshold: float | None,
+    iou_threshold: float | None,
+) -> tuple[float, float]:
+    effective_confidence = (
+        float(confidence_threshold)
+        if confidence_threshold is not None
+        else float(config["infer"].get("confidence_threshold", 0.25))
+    )
+    effective_iou = (
+        float(iou_threshold)
+        if iou_threshold is not None
+        else float(config["infer"].get("iou_threshold", 0.7))
+    )
+    return effective_confidence, effective_iou
+
+
+def _extract_detections(result) -> list[dict]:
+    detections: list[dict] = []
+    if result.boxes is None:
+        return detections
+
+    names = result.names
+    for cls_id, conf, xyxy in zip(
+        result.boxes.cls.tolist(),
+        result.boxes.conf.tolist(),
+        result.boxes.xyxy.tolist(),
+    ):
+        detections.append(
+            {
+                "label": names[int(cls_id)],
+                "confidence": float(conf),
+                "box": [float(value) for value in xyxy],
+            }
+        )
+    return detections
+
+
+@dataclass
+class DetectionSession:
+    config_path: str
+    config: dict
+    model: object
+    weights_path: Path
+    save_dir: Path
+    confidence_threshold: float
+    iou_threshold: float
+
+    @classmethod
+    def from_config(
+        cls,
+        config_path: str | Path = "detection/configs/detection.yaml",
+        confidence_threshold: float | None = None,
+        iou_threshold: float | None = None,
+    ) -> "DetectionSession":
+        config = load_config(config_path)
+        YOLO = ensure_ultralytics()
+        build_dataset_yaml(config)
+        weights_path = resolve_weights_path(config, "best.pt")
+        if not weights_path.exists():
+            raise FileNotFoundError(f"Weights not found: {weights_path}")
+
+        effective_confidence, effective_iou = _resolve_effective_thresholds(
+            config,
+            confidence_threshold=confidence_threshold,
+            iou_threshold=iou_threshold,
+        )
+        save_dir = (
+            Path.cwd() / Path(config["infer"].get("save_dir", "detection/outputs/predict"))
+        ).resolve()
+        model = YOLO(str(weights_path))
+        return cls(
+            config_path=str(Path(config_path).expanduser().resolve()),
+            config=config,
+            model=model,
+            weights_path=weights_path,
+            save_dir=save_dir,
+            confidence_threshold=effective_confidence,
+            iou_threshold=effective_iou,
+        )
+
+    def _predict(self, source: str | Path | "np.ndarray", save: bool):
+        return self.model.predict(
+            source=source,
+            conf=self.confidence_threshold,
+            iou=self.iou_threshold,
+            imgsz=int(self.config["train"].get("image_size", 640)),
+            device=resolve_device(self.config["train"].get("device", "auto")),
+            project=str(self.save_dir.parent),
+            name=self.save_dir.name,
+            exist_ok=True,
+            save=save,
+            verbose=False,
+        )[0]
+
+    def predict_image(self, image_path: str | Path) -> dict:
+        image = Path(image_path).expanduser().resolve()
+        if not image.exists():
+            raise FileNotFoundError(f"Image not found: {image}")
+
+        result = self._predict(source=str(image), save=True)
+        detections = _extract_detections(result)
+        rendered_path = self.save_dir / image.name
+        explanation, concept = _build_detection_explanation(
+            detections,
+            confidence_threshold=self.confidence_threshold,
+            iou_threshold=self.iou_threshold,
+        )
+        return {
+            "image_path": str(image),
+            "rendered_image_path": str(rendered_path) if rendered_path.exists() else None,
+            "weights_path": str(self.weights_path),
+            "confidence_threshold": self.confidence_threshold,
+            "iou_threshold": self.iou_threshold,
+            "detection_count": len(detections),
+            "detections": detections,
+            "explanation": explanation,
+            "concept": concept,
+        }
+
+    def predict_frame(self, frame_rgb: "np.ndarray") -> dict:
+        if np is None:
+            raise RuntimeError("numpy is required for frame inference. Install it with: pip install numpy")
+
+        result = self._predict(source=frame_rgb, save=False)
+        detections = _extract_detections(result)
+        explanation, concept = _build_detection_explanation(
+            detections,
+            confidence_threshold=self.confidence_threshold,
+            iou_threshold=self.iou_threshold,
+        )
+        return {
+            "weights_path": str(self.weights_path),
+            "confidence_threshold": self.confidence_threshold,
+            "iou_threshold": self.iou_threshold,
+            "detection_count": len(detections),
+            "detections": detections,
+            "explanation": explanation,
+            "concept": concept,
+        }
+
+
 def build_status(config_path: str | Path = "detection/configs/detection.yaml") -> dict:
     path = Path(config_path).expanduser().resolve()
     config = load_config(path)
@@ -127,73 +276,9 @@ def predict_image(
     confidence_threshold: float | None = None,
     iou_threshold: float | None = None,
 ) -> dict:
-    image = Path(image_path).expanduser().resolve()
-    if not image.exists():
-        raise FileNotFoundError(f"Image not found: {image}")
-
-    config = load_config(config_path)
-    YOLO = ensure_ultralytics()
-    build_dataset_yaml(config)
-    weights_path = resolve_weights_path(config, "best.pt")
-    if not weights_path.exists():
-        raise FileNotFoundError(f"Weights not found: {weights_path}")
-
-    save_dir = (Path.cwd() / Path(config["infer"].get("save_dir", "detection/outputs/predict"))).resolve()
-    effective_confidence = (
-        float(confidence_threshold)
-        if confidence_threshold is not None
-        else float(config["infer"].get("confidence_threshold", 0.25))
+    session = DetectionSession.from_config(
+        config_path=config_path,
+        confidence_threshold=confidence_threshold,
+        iou_threshold=iou_threshold,
     )
-    effective_iou = (
-        float(iou_threshold)
-        if iou_threshold is not None
-        else float(config["infer"].get("iou_threshold", 0.7))
-    )
-    model = YOLO(str(weights_path))
-    results = model.predict(
-        source=str(image),
-        conf=effective_confidence,
-        iou=effective_iou,
-        imgsz=int(config["train"].get("image_size", 640)),
-        device=resolve_device(config["train"].get("device", "auto")),
-        project=str(save_dir.parent),
-        name=save_dir.name,
-        exist_ok=True,
-        save=True,
-        verbose=False,
-    )
-
-    result = results[0]
-    names = result.names
-    detections = []
-    if result.boxes is not None:
-        for cls_id, conf, xyxy in zip(
-            result.boxes.cls.tolist(),
-            result.boxes.conf.tolist(),
-            result.boxes.xyxy.tolist(),
-        ):
-            detections.append(
-                {
-                    "label": names[int(cls_id)],
-                    "confidence": float(conf),
-                    "box": [float(value) for value in xyxy],
-                }
-            )
-
-    rendered_path = save_dir / image.name
-    explanation, concept = _build_detection_explanation(
-        detections,
-        confidence_threshold=effective_confidence,
-        iou_threshold=effective_iou,
-    )
-    return {
-        "image_path": str(image),
-        "rendered_image_path": str(rendered_path) if rendered_path.exists() else None,
-        "weights_path": str(weights_path),
-        "confidence_threshold": effective_confidence,
-        "iou_threshold": effective_iou,
-        "detection_count": len(detections),
-        "detections": detections,
-        "explanation": explanation,
-        "concept": concept,
-    }
+    return session.predict_image(image_path)

@@ -133,11 +133,20 @@ def _extract_detections(result) -> list[dict]:
         result.boxes.conf.tolist(),
         result.boxes.xyxy.tolist(),
     ):
+        x1, y1, x2, y2 = [float(value) for value in xyxy]
+        width = x2 - x1
+        height = y2 - y1
+        center_x = x1 + (width / 2.0)
+        center_y = y1 + (height / 2.0)
         detections.append(
             {
                 "label": names[int(cls_id)],
                 "confidence": float(conf),
-                "box": [float(value) for value in xyxy],
+                "box": [x1, y1, x2, y2],
+                "center_x": center_x,
+                "center_y": center_y,
+                "box_width": width,
+                "box_height": height,
             }
         )
     return detections

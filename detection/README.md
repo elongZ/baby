@@ -183,13 +183,15 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 当前仓库已经补上一个薄的 OpenCV 工程层，用于把现有单图推理入口接到摄像头视频流：
 
 - 服务层：[opencv_service.py](/Users/macmain/Documents/baby/detection/opencv_service.py)
+- 预处理层：[opencv_preprocess.py](/Users/macmain/Documents/baby/detection/opencv_preprocess.py)
 - demo 脚本：[camera_demo.py](/Users/macmain/Documents/baby/detection/scripts/camera_demo.py)
 - 摄像头配置：[camera.yaml](/Users/macmain/Documents/baby/detection/configs/camera.yaml)
+- 预处理配置：[preprocess.yaml](/Users/macmain/Documents/baby/detection/configs/preprocess.yaml)
 
 设计原则：
 
 - 继续复用 [service.py](/Users/macmain/Documents/baby/detection/service.py) 的 YOLO 推理逻辑
-- 摄像头层只负责读帧、BGR/RGB 转换、周期性推理、结果叠加
+- 摄像头层只负责读帧、预处理、BGR/RGB 转换、周期性推理、结果叠加
 - 当前阶段不改 mac app UI，不引入网络传输
 
 运行前请先确保当前 Python 环境至少安装：
@@ -204,14 +206,17 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 ```bash
 python -m detection.scripts.camera_demo \
   --config detection/configs/detection.yaml \
-  --camera-config detection/configs/camera.yaml
+  --camera-config detection/configs/camera.yaml \
+  --preprocess-config detection/configs/preprocess.yaml
 ```
 
 默认行为：
 
 - 打开 `camera_index=0`
+- 可通过 `preprocess.yaml` 控制 resize、brightness / contrast、Gaussian blur、ROI
 - 按 `inference_interval` 每隔 N 帧做一次推理
 - 窗口中显示 bbox、label、confidence、推理 FPS
+- 可选打开预处理窗口，对比原始链路和预处理链路
 - 按 `q` 或 `Esc` 退出
 
 ## 6. 后续计划

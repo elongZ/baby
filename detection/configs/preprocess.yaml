@@ -1,0 +1,20 @@
+enabled: false
+resize:
+  enabled: false
+  width: 640
+  height: 640
+brightness:
+  enabled: false
+  beta: 12.0
+contrast:
+  enabled: false
+  alpha: 1.1
+gaussian_blur:
+  enabled: false
+  kernel_size: 5
+roi:
+  enabled: false
+  x: 0
+  y: 0
+  width: 640
+  height: 640

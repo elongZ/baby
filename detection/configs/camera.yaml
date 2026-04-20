@@ -5,5 +5,6 @@ inference_interval: 3
 mirror: true
 window_name: Detection Camera Demo
 show_fps: true
+show_preprocessed_window: false
 line_thickness: 2
 font_scale: 0.6

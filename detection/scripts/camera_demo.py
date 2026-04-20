@@ -18,6 +18,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to camera YAML config",
     )
     parser.add_argument(
+        "--preprocess-config",
+        default="detection/configs/preprocess.yaml",
+        help="Path to preprocess YAML config",
+    )
+    parser.add_argument(
         "--confidence",
         type=float,
         default=None,
@@ -37,6 +42,7 @@ def main() -> None:
     service = OpenCVDetectionService.from_config(
         detection_config_path=args.config,
         camera_config_path=args.camera_config,
+        preprocess_config_path=args.preprocess_config,
         confidence_threshold=args.confidence,
         iou_threshold=args.iou,
     )
@@ -50,6 +56,14 @@ def main() -> None:
             frame = service.read_frame()
             rendered_frame, payload = service.process_frame(frame)
             cv2.imshow(service.camera_config.window_name, rendered_frame)
+            if (
+                service.camera_config.show_preprocessed_window
+                and service.last_preprocessed_frame is not None
+            ):
+                cv2.imshow(
+                    f"{service.camera_config.window_name} - Preprocessed",
+                    service.last_preprocessed_frame,
+                )
 
             key = cv2.waitKey(1) & 0xFF
             if key in {ord("q"), 27}:

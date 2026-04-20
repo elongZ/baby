@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from detection.opencv_preprocess import PreprocessConfig, preprocess_frame
 from detection.scripts.common import load_config
 from detection.service import DetectionSession
 
@@ -29,6 +30,7 @@ class CameraRuntimeConfig:
     show_fps: bool
     line_thickness: int
     font_scale: float
+    show_preprocessed_window: bool
 
     @classmethod
     def from_yaml(cls, config_path: str | Path = "detection/configs/camera.yaml") -> "CameraRuntimeConfig":
@@ -43,6 +45,7 @@ class CameraRuntimeConfig:
             show_fps=bool(config.get("show_fps", True)),
             line_thickness=max(1, int(config.get("line_thickness", 2))),
             font_scale=float(config.get("font_scale", 0.6)),
+            show_preprocessed_window=bool(config.get("show_preprocessed_window", False)),
         )
 
 
@@ -51,9 +54,11 @@ class OpenCVDetectionService:
         self,
         detector: DetectionSession,
         camera_config: CameraRuntimeConfig,
+        preprocess_config: PreprocessConfig,
     ) -> None:
         self.detector = detector
         self.camera_config = camera_config
+        self.preprocess_config = preprocess_config
         self.capture: cv2.VideoCapture | None = None
         self.frame_index = 0
         self.last_detection_payload: dict = {
@@ -61,14 +66,17 @@ class OpenCVDetectionService:
             "detections": [],
             "explanation": "",
             "concept": "",
+            "preprocess": {"enabled": False, "steps": []},
         }
         self.last_inference_fps = 0.0
+        self.last_preprocessed_frame: np.ndarray | None = None
 
     @classmethod
     def from_config(
         cls,
         detection_config_path: str | Path = "detection/configs/detection.yaml",
         camera_config_path: str | Path = "detection/configs/camera.yaml",
+        preprocess_config_path: str | Path = "detection/configs/preprocess.yaml",
         confidence_threshold: float | None = None,
         iou_threshold: float | None = None,
     ) -> "OpenCVDetectionService":
@@ -78,7 +86,12 @@ class OpenCVDetectionService:
             iou_threshold=iou_threshold,
         )
         camera_config = CameraRuntimeConfig.from_yaml(camera_config_path)
-        return cls(detector=detector, camera_config=camera_config)
+        preprocess_config = PreprocessConfig.from_yaml(preprocess_config_path)
+        return cls(
+            detector=detector,
+            camera_config=camera_config,
+            preprocess_config=preprocess_config,
+        )
 
     def open_camera(self) -> None:
         capture = cv2.VideoCapture(self.camera_config.camera_index)
@@ -106,14 +119,17 @@ class OpenCVDetectionService:
 
     def process_frame(self, frame_bgr: np.ndarray) -> tuple[np.ndarray, dict]:
         self.frame_index += 1
+        preprocessed_bgr, preprocess_summary = preprocess_frame(frame_bgr, self.preprocess_config)
+        self.last_preprocessed_frame = preprocessed_bgr
         if self.frame_index == 1 or self.frame_index % self.camera_config.inference_interval == 0:
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            frame_rgb = cv2.cvtColor(preprocessed_bgr, cv2.COLOR_BGR2RGB)
             started_at = time.perf_counter()
             self.last_detection_payload = self.detector.predict_frame(frame_rgb)
             elapsed = time.perf_counter() - started_at
             self.last_inference_fps = (1.0 / elapsed) if elapsed > 0 else 0.0
+            self.last_detection_payload["preprocess"] = preprocess_summary
 
-        rendered = frame_bgr.copy()
+        rendered = preprocessed_bgr.copy()
         self._draw_detections(rendered, self.last_detection_payload.get("detections", []))
         if self.camera_config.show_fps:
             self._draw_status(rendered)
@@ -150,6 +166,9 @@ class OpenCVDetectionService:
             f" | Infer FPS: {self.last_inference_fps:.1f}"
             f" | Interval: {self.camera_config.inference_interval}"
         )
+        preprocess_steps = self.last_detection_payload.get("preprocess", {}).get("steps", [])
+        if preprocess_steps:
+            status += f" | Pre: {', '.join(preprocess_steps[:2])}"
         cv2.putText(
             frame_bgr,
             status,

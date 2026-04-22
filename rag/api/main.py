@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import threading
+from base64 import b64decode
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,9 +12,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
+from detection.opencv_preprocess import PreprocessConfig, preprocess_frame
 from detection.service import build_status as build_detection_status
+from detection.service import predict_frame as predict_detection_frame
 from detection.service import predict_image as predict_detection_image
 from rag.pipeline import RagPipeline
+from robotics.vision_logic import build_robot_decision_payload
 from scripts.build_kb import ensure_kb_current
 from scripts.source_loader import SUPPORTED_EXTENSIONS, collect_source_files
 from vision.src.infer.service import build_evaluation_samples as build_vision_evaluation_samples
@@ -53,6 +57,12 @@ class DetectionPredictRequest(BaseModel):
     iou_threshold: float | None = None
 
 
+class DetectionFramePredictRequest(BaseModel):
+    image_base64: str
+    confidence_threshold: float | None = None
+    iou_threshold: float | None = None
+
+
 def _env_bool(key: str, default: bool = False) -> bool:
     val = os.getenv(key)
     if val is None:
@@ -88,6 +98,22 @@ def _adapter_display_name(adapter_path: str) -> str | None:
     if not adapter_path:
         return None
     return Path(adapter_path).expanduser().resolve().name
+
+
+def _decode_base64_frame(image_base64: str):
+    try:
+        import cv2
+        import numpy as np
+    except Exception as exc:
+        raise RuntimeError("opencv-python and numpy are required for frame prediction.") from exc
+
+    payload = image_base64.split(",", 1)[-1]
+    image_bytes = b64decode(payload)
+    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+    frame_bgr = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+    if frame_bgr is None:
+        raise ValueError("Failed to decode frame bytes.")
+    return frame_bgr, cv2
 
 
 def get_runtime_config() -> dict:
@@ -508,12 +534,35 @@ def detection_status() -> dict:
 @app.post("/detection/predict")
 def detection_predict(request: DetectionPredictRequest) -> dict:
     try:
-        return predict_detection_image(
+        payload = predict_detection_image(
             request.image_path,
             confidence_threshold=request.confidence_threshold,
             iou_threshold=request.iou_threshold,
         )
+        payload["robotics"] = build_robot_decision_payload(payload.get("detections", []))
+        return payload
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/detection/predict_frame")
+def detection_predict_frame(request: DetectionFramePredictRequest) -> dict:
+    try:
+        frame_bgr, cv2 = _decode_base64_frame(request.image_base64)
+        preprocess_config = PreprocessConfig.from_yaml("detection/configs/preprocess.yaml")
+        processed_bgr, preprocess_summary = preprocess_frame(frame_bgr, preprocess_config)
+        frame_rgb = cv2.cvtColor(processed_bgr, cv2.COLOR_BGR2RGB)
+        payload = predict_detection_frame(
+            frame_rgb,
+            confidence_threshold=request.confidence_threshold,
+            iou_threshold=request.iou_threshold,
+        )
+        payload["robotics"] = build_robot_decision_payload(payload.get("detections", []))
+        payload["preprocess"] = preprocess_summary
+        return payload
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -16,12 +16,17 @@
 - 单图检测推理与可视化
 - OpenCV 摄像头实时检测 demo
 
+相关补图方法说明：
+
+- Atlas 京东手机图采集：[ATLAS_JD_PHONE_COLLECTION.md](/Users/macmain/Documents/baby/detection/ATLAS_JD_PHONE_COLLECTION.md)
+
 ## 1. 当前目标
 
 本模块第一期的任务是搭建一个最小目标检测闭环，用于识别：
 
 - `diaper`
 - `stroller`
+- `phone`
 
 当前已完成：
 
@@ -87,6 +92,7 @@ class_id x_center y_center width height
 
 - `0 -> diaper`
 - `1 -> stroller`
+- `2 -> phone`
 
 ## 4. 当前状态
 
@@ -176,6 +182,7 @@ Detection Playground 当前支持在 UI 中直接调整推理阈值：
 
 - 数据规模仍然偏小
 - `diaper` 与 `stroller` 的图像风格分布不够稳定
+- `phone` 已接入训练与演示配置，但如果没有补齐带框标注数据并重训，模型还不能稳定识别手机
 - 小数据集下分数校准偏低，阈值选择会显著影响推理结果
 
 ## 5. 摄像头实时检测
@@ -237,12 +244,13 @@ python -m detection.scripts.camera_demo \
 
 ## 7. 标注规范
 
-本项目第一期只标注两个类别：
+本项目当前按三个类别组织标注：
 
 - `0 -> diaper`
 - `1 -> stroller`
+- `2 -> phone`
 
-除这两个类别之外，其余物体均视为背景，不单独标注，不设置 `other` 检测类。
+除这三个类别之外，其余物体均视为背景，不单独标注，不设置 `other` 检测类。
 
 ### 7.1 标注目标
 
@@ -250,6 +258,7 @@ python -m detection.scripts.camera_demo \
 
 - `diaper`
 - `stroller`
+- `phone`
 
 第一期只关注主体清晰、类别明确的目标，不追求覆盖所有复杂边界情况。
 

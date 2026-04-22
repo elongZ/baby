@@ -136,6 +136,7 @@ robotics/
 - 默认分拣规则：
   - `diaper -> bin A`
   - `stroller -> bin B`
+  - `phone -> bin C`
 - 输出统一结构，便于后续给 mac app 或 API 直接消费
 
 ## 7. 当前决策输出

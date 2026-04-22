@@ -16,6 +16,7 @@ baby/
 ├── detection/
 ├── docs/
 ├── rag/
+├── robotics/
 ├── requirements/
 │   ├── base.txt
 │   ├── runtime.txt
@@ -113,6 +114,7 @@ python -m scripts.run_web
 ## 3. 桌面版说明
 
 - 当前为项目初始化版本，已具备离线建库与在线检索问答主链路。
+- 当前 mac app 已按模块拆分为 `RAG / Vision / Detection / Robotics` 四个区域，`Robotics` 用于承接视觉引导机械臂演示骨架。
 - 索引中的每个 chunk 默认包含 `chunk_id/source/page/text` 元数据，便于回答引用出处。
 - 支持可选重排（Reranker）：可通过 `.env` 中 `ENABLE_RERANKER=true` 启用。
 - SwiftUI App 默认保留三个调参项：`top_k`、`retrieve_k`、`relevance_threshold`
@@ -125,7 +127,27 @@ python -m scripts.run_web
   - 原理说明按标准 `Transformers + PEFT + bitsandbytes + SFT` 链路表述
   - 微调目标是“回答行为对齐”，不是把儿科知识硬灌进模型
 
-## 4. 检索评估
+## 4. Robotics 模块
+
+`robotics/` 是当前仓库下独立的机器人演示模块，用于承接“视觉识别 -> 工业视觉任务决策 -> 机械臂执行演示”的应用层表达。
+
+当前约定：
+
+- `detection/` 继续负责检测模型、训练、评测和推理能力
+- `robotics/` 复用检测结果，强调任务时间线、执行阶段和工业视觉流程展示
+- 第一版只做模拟演示，不接真实机械臂控制，不引入控制器、PLC 或坐标标定链路
+
+第一版 mac app 导航规划：
+
+- `Robotics / Playground`
+- `Robotics / Workflow`
+
+当前实现状态：
+
+- `Robotics / Playground` 已接入 Detection 图片选择、推理结果、任务阶段时间线和分拣决策解释
+- `Robotics / Workflow` 已接入当前模型、设备、阈值、目标类别、抓取点和运行快照
+
+## 5. 检索评估
 
 先准备评测集（JSONL），可参考 `data/eval_set.example.jsonl` 复制为 `data/eval_set.jsonl`。
 
@@ -145,7 +167,7 @@ python -m scripts.eval_retrieval --dataset data/eval_set.jsonl --top-k 3 --retri
 python -m scripts.eval_retrieval --dataset data/eval_set.jsonl --top-k 3 --retrieve-k 9 --use-reranker
 ```
 
-## 5. 训练说明
+## 6. 训练说明
 
 训练策略、数据格式和面试表达口径见 [training_strategy.md](/Users/macmain/Documents/baby/docs/training_strategy.md)。
 

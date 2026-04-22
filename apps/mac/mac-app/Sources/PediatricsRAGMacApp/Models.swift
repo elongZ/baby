@@ -12,6 +12,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     case detectionDataset
     case detectionTraining
     case detectionEvaluation
+    case roboticsPlayground
+    case roboticsWorkflow
 
     var id: String { rawValue }
 
@@ -23,6 +25,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "Vision"
         case .detectionPlayground, .detectionDataset, .detectionTraining, .detectionEvaluation:
             return "Detection"
+        case .roboticsPlayground, .roboticsWorkflow:
+            return "Robotics"
         }
     }
 
@@ -50,6 +54,10 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "Training"
         case .detectionEvaluation:
             return "Evaluation"
+        case .roboticsPlayground:
+            return "Playground"
+        case .roboticsWorkflow:
+            return "Workflow"
         }
     }
 
@@ -77,6 +85,10 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "figure.run"
         case .detectionEvaluation:
             return "scope"
+        case .roboticsPlayground:
+            return "dot.scope.display"
+        case .roboticsWorkflow:
+            return "point.3.connected.trianglepath.dotted"
         }
     }
 }
@@ -478,24 +490,83 @@ struct DetectionPredictRequest: Encodable {
     }
 }
 
+struct DetectionFramePredictRequest: Encodable {
+    let imageBase64: String
+    let confidenceThreshold: Double?
+    let iouThreshold: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case imageBase64 = "image_base64"
+        case confidenceThreshold = "confidence_threshold"
+        case iouThreshold = "iou_threshold"
+    }
+}
+
 struct DetectionBox: Decodable, Identifiable {
     let label: String
     let confidence: Double
     let box: [Double]
+    let centerX: Double?
+    let centerY: Double?
+    let boxWidth: Double?
+    let boxHeight: Double?
 
     var id: String {
         "\(label)-\(confidence)-\(box.map { String($0) }.joined(separator: "-"))"
     }
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case confidence
+        case box
+        case centerX = "center_x"
+        case centerY = "center_y"
+        case boxWidth = "box_width"
+        case boxHeight = "box_height"
+    }
+}
+
+struct DetectionPickPoint: Decodable {
+    let x: Double
+    let y: Double
+    let method: String
+}
+
+struct DetectionRobotDecisionPayload: Decodable {
+    let decisionReady: Bool
+    let pickPoint: DetectionPickPoint?
+    let destinationBin: String
+    let planner: String
+    let routeRule: String
+    let selectionReason: String
+    let target: DetectionBox?
+
+    enum CodingKeys: String, CodingKey {
+        case decisionReady = "decision_ready"
+        case pickPoint = "pick_point"
+        case destinationBin = "destination_bin"
+        case planner
+        case routeRule = "route_rule"
+        case selectionReason = "selection_reason"
+        case target
+    }
+}
+
+struct DetectionPreprocessSummary: Decodable {
+    let enabled: Bool
+    let steps: [String]
 }
 
 struct DetectionPredictionResponse: Decodable {
-    let imagePath: String
+    let imagePath: String?
     let renderedImagePath: String?
     let weightsPath: String
     let detectionCount: Int
     let detections: [DetectionBox]
     let explanation: String
     let concept: String
+    let robotics: DetectionRobotDecisionPayload?
+    let preprocess: DetectionPreprocessSummary?
 
     enum CodingKeys: String, CodingKey {
         case imagePath = "image_path"
@@ -505,10 +576,189 @@ struct DetectionPredictionResponse: Decodable {
         case detections
         case explanation
         case concept
+        case robotics
+        case preprocess
     }
 }
 
+struct RoboticsStageConfig: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let durationSeconds: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case detail
+        case durationSeconds = "duration_seconds"
+    }
+}
+
+struct RoboticsRouteConfig: Decodable {
+    let className: String
+    let destinationBin: String
+
+    enum CodingKeys: String, CodingKey {
+        case className = "class_name"
+        case destinationBin = "destination_bin"
+    }
+}
+
+struct RoboticsInfoCardConfig: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let tintHex: String
+    let body: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case systemImage = "system_image"
+        case tintHex = "tint_hex"
+        case body
+    }
+}
+
+struct RoboticsDemoConfig: Decodable {
+    let mode: String
+    let scenario: String
+    let idleTask: String
+    let taskTemplate: String
+    let planner: String
+    let routeRuleDescription: String
+    let defaultDestinationBin: String
+    let stages: [RoboticsStageConfig]
+    let routes: [RoboticsRouteConfig]
+    let workflowTitle: String
+    let workflowSubtitle: String
+    let pipelineOverviewTitle: String
+    let pipelineOverviewBody: String
+    let workflowSteps: [RoboticsInfoCardConfig]
+    let technologyCards: [RoboticsInfoCardConfig]
+    let emptyStateTitle: String
+    let actionExecutionLabel: String
+    let targetLockNarrativeBody: String
+    let targetLockNarrativeEmpty: String
+    let decisionNarrativeBody: String
+    let decisionNarrativeEmpty: String
+    let summaryLabels: [String: String]
+    let runtimeSnapshotLabels: [String: String]
+    let reasoningLabels: [String: String]
+    let bilingualLabels: [String: String]
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case scenario
+        case idleTask = "idle_task"
+        case taskTemplate = "task_template"
+        case planner
+        case routeRuleDescription = "route_rule_description"
+        case defaultDestinationBin = "default_destination_bin"
+        case stages
+        case routes
+        case workflowTitle = "workflow_title"
+        case workflowSubtitle = "workflow_subtitle"
+        case pipelineOverviewTitle = "pipeline_overview_title"
+        case pipelineOverviewBody = "pipeline_overview_body"
+        case workflowSteps = "workflow_steps"
+        case technologyCards = "technology_cards"
+        case emptyStateTitle = "empty_state_title"
+        case actionExecutionLabel = "action_execution_label"
+        case targetLockNarrativeBody = "target_lock_narrative_body"
+        case targetLockNarrativeEmpty = "target_lock_narrative_empty"
+        case decisionNarrativeBody = "decision_narrative_body"
+        case decisionNarrativeEmpty = "decision_narrative_empty"
+        case summaryLabels = "summary_labels"
+        case runtimeSnapshotLabels = "runtime_snapshot_labels"
+        case reasoningLabels = "reasoning_labels"
+        case bilingualLabels = "bilingual_labels"
+    }
+
+    static let `default` = RoboticsDemoConfig(
+        mode: "Simulation",
+        scenario: "Sorting Demo",
+        idleTask: "Pick and Place",
+        taskTemplate: "Pick {label}",
+        planner: "Center-point pick with fixed bin routing",
+        routeRuleDescription: "Class-based routing",
+        defaultDestinationBin: "bin A",
+        stages: [
+            RoboticsStageConfig(id: "detect", title: "Detect", detail: "Locate object candidates in the scene.", durationSeconds: 0.6),
+            RoboticsStageConfig(id: "target_lock", title: "Target Lock", detail: "Select the final target center and class.", durationSeconds: 0.6),
+            RoboticsStageConfig(id: "path_plan", title: "Path Plan", detail: "Build the simulated arm route for pick-and-place.", durationSeconds: 0.7),
+            RoboticsStageConfig(id: "pick", title: "Pick", detail: "Execute grasp motion in the demo timeline.", durationSeconds: 0.7),
+            RoboticsStageConfig(id: "transfer", title: "Transfer", detail: "Carry the target above the destination bin.", durationSeconds: 0.55),
+            RoboticsStageConfig(id: "place", title: "Place", detail: "Lower the target into the destination bin.", durationSeconds: 0.35),
+            RoboticsStageConfig(id: "release", title: "Release", detail: "Open the gripper and drop the target into the bin.", durationSeconds: 0.25),
+        ],
+        routes: [
+            RoboticsRouteConfig(className: "stroller", destinationBin: "bin B"),
+            RoboticsRouteConfig(className: "phone", destinationBin: "bin C"),
+            RoboticsRouteConfig(className: "diaper", destinationBin: "bin A"),
+        ],
+        workflowTitle: "视觉到执行流程",
+        workflowSubtitle: "这页用于明确说明 OpenCV、PyTorch 和工业视觉逻辑在机械臂演示链路中的分工。",
+        pipelineOverviewTitle: "Input -> OpenCV -> PyTorch -> Decision -> Robot Action",
+        pipelineOverviewBody: "第一版先把这条链以应用层工作流的方式固定下来。当前还未加载完整目标结果时，Workflow 会继续显示各阶段的职责分工。",
+        workflowSteps: [
+            RoboticsInfoCardConfig(id: "input", title: "Input Acquisition", systemImage: "photo", tintHex: "#5C87FA", body: "加载样例图像或现场画面，形成后续视觉分析的统一输入。"),
+            RoboticsInfoCardConfig(id: "opencv", title: "OpenCV Processing", systemImage: "camera.aperture", tintHex: "#3882F5", body: "完成图像读写、尺寸处理、基础预处理、检测框叠加和坐标提取。"),
+            RoboticsInfoCardConfig(id: "pytorch", title: "PyTorch Inference", systemImage: "bolt.circle", tintHex: "#1FB388", body: "运行分类或检测模型，解析输出并生成目标类别、置信度和候选框。"),
+            RoboticsInfoCardConfig(id: "decision", title: "Industrial Vision Logic", systemImage: "gearshape.2.fill", tintHex: "#F5943D", body: "将视觉结果转为任务流程，完成目标选择、分拣决策和阶段推进。"),
+            RoboticsInfoCardConfig(id: "action", title: "Robot Action Demo", systemImage: "dot.scope.display", tintHex: "#AE75F2", body: "通过 Mission Timer、Task Stages 和执行摘要，把机械臂任务以演示方式表达出来。"),
+        ],
+        technologyCards: [
+            RoboticsInfoCardConfig(id: "opencv", title: "OpenCV", systemImage: "camera.filters", tintHex: "#3882F5", body: "负责图像读写、预处理、结果叠加绘制与目标点位提取。"),
+            RoboticsInfoCardConfig(id: "pytorch", title: "PyTorch", systemImage: "brain.filled.head.profile", tintHex: "#1FB388", body: "负责分类/检测模型推理、输出解析与置信度评分。"),
+            RoboticsInfoCardConfig(id: "vision_logic", title: "Industrial Vision Logic", systemImage: "gearshape.2", tintHex: "#F5943D", body: "负责目标选择、任务编排与分拣流程模拟。"),
+        ],
+        emptyStateTitle: "Choose a detection image to start the robotics demo.",
+        actionExecutionLabel: "Simulated pick-and-place",
+        targetLockNarrativeBody: "系统优先选取置信度最高的检测框作为当前任务目标，并使用框中心点作为模拟抓取点。这个点位由检测框四个边界坐标计算得到，用于后续的 Path Plan 与 Pick 阶段展示。",
+        targetLockNarrativeEmpty: "当前还没有锁定目标。运行 detection 后，这里会说明为什么选中某个框作为机械臂任务目标。",
+        decisionNarrativeBody: "工业视觉逻辑当前采用规则化分拣策略：先读取 PyTorch detection 的目标类别，再根据预设路由规则映射到目标料箱。第一版先用固定 bin 路由表达执行决策，后续可以扩展为更复杂的任务编排。",
+        decisionNarrativeEmpty: "当前还没有生成分拣决策。检测结果返回后，这里会解释目标类别如何映射到具体的分拣动作。",
+        summaryLabels: [
+            "decision": "Decision",
+            "execution": "Execution",
+            "result": "Result",
+            "runtime": "Runtime"
+        ],
+        runtimeSnapshotLabels: [
+            "image": "Image",
+            "rendered": "Rendered",
+            "target": "Target",
+            "pick_point": "Pick Point",
+            "decision": "Decision",
+            "stage": "Stage",
+            "next": "Next"
+        ],
+        reasoningLabels: [
+            "selection": "Selection",
+            "center": "Center",
+            "box": "Box",
+            "confidence": "Confidence",
+            "input_class": "Input Class",
+            "rule": "Rule",
+            "output_bin": "Output Bin",
+            "planner": "Planner"
+        ],
+        bilingualLabels: [
+            "mission_timer": "任务计时 Mission Timer",
+            "current_stage": "当前阶段 Current Stage",
+            "next_action": "下一步 Next Action",
+            "task_stages": "任务阶段 Task Stages",
+            "active": "进行中 Active",
+            "pending": "待执行 Pending",
+            "done": "已完成 Done"
+        ]
+    )
+}
+
 enum DetectionDatasetBucket: String, CaseIterable, Identifiable {
+    case pending
     case train
     case val
     case test
@@ -518,6 +768,8 @@ enum DetectionDatasetBucket: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .pending:
+            return "Pending"
         case .train:
             return "Train"
         case .val:
@@ -534,6 +786,7 @@ enum DetectionDatasetClassFilter: String, CaseIterable, Identifiable {
     case all
     case diaper
     case stroller
+    case phone
     case unlabeled
 
     var id: String { rawValue }
@@ -546,6 +799,8 @@ enum DetectionDatasetClassFilter: String, CaseIterable, Identifiable {
             return "Diaper"
         case .stroller:
             return "Stroller"
+        case .phone:
+            return "Phone"
         case .unlabeled:
             return "Unlabeled"
         }

@@ -5,3 +5,4 @@ test: /Users/macmain/Documents/baby/detection/datasets/images/test
 names:
   0: diaper
   1: stroller
+  2: phone

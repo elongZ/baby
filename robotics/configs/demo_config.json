@@ -1,0 +1,171 @@
+{
+  "mode": "Simulation",
+  "scenario": "Sorting Demo",
+  "idle_task": "Pick and Place",
+  "task_template": "Pick {label}",
+  "planner": "Center-point pick with fixed bin routing",
+  "route_rule_description": "Class-based routing from detected label to destination bin",
+  "default_destination_bin": "bin A",
+  "workflow_title": "视觉到执行流程",
+  "workflow_subtitle": "这页用于明确说明 OpenCV、PyTorch 和工业视觉逻辑在机械臂演示链路中的分工。",
+  "pipeline_overview_title": "Input -> OpenCV -> PyTorch -> Decision -> Robot Action",
+  "pipeline_overview_body": "第一版先把这条链以应用层工作流的方式固定下来。当前还未加载完整目标结果时，Workflow 会继续显示各阶段的职责分工。",
+  "empty_state_title": "Choose a detection image to start the robotics demo.",
+  "action_execution_label": "Simulated pick-and-place",
+  "target_lock_narrative_body": "系统优先选取置信度最高的检测框作为当前任务目标，并使用框中心点作为模拟抓取点。这个点位由检测框四个边界坐标计算得到，用于后续的 Path Plan 与 Pick 阶段展示。",
+  "target_lock_narrative_empty": "当前还没有锁定目标。运行 detection 后，这里会说明为什么选中某个框作为机械臂任务目标。",
+  "decision_narrative_body": "工业视觉逻辑当前采用规则化分拣策略：先读取 PyTorch detection 的目标类别，再根据预设路由规则映射到目标料箱。第一版先用固定 bin 路由表达执行决策，后续可以扩展为更复杂的任务编排。",
+  "decision_narrative_empty": "当前还没有生成分拣决策。检测结果返回后，这里会解释目标类别如何映射到具体的分拣动作。",
+  "summary_labels": {
+    "decision": "Decision",
+    "execution": "Execution",
+    "result": "Result",
+    "runtime": "Runtime"
+  },
+  "runtime_snapshot_labels": {
+    "image": "Image",
+    "rendered": "Rendered",
+    "target": "Target",
+    "pick_point": "Pick Point",
+    "decision": "Decision",
+    "stage": "Stage",
+    "next": "Next"
+  },
+  "reasoning_labels": {
+    "selection": "Selection",
+    "center": "Center",
+    "box": "Box",
+    "confidence": "Confidence",
+    "input_class": "Input Class",
+    "rule": "Rule",
+    "output_bin": "Output Bin",
+    "planner": "Planner"
+  },
+  "bilingual_labels": {
+    "mission_timer": "任务计时 Mission Timer",
+    "current_stage": "当前阶段 Current Stage",
+    "next_action": "下一步 Next Action",
+    "task_stages": "任务阶段 Task Stages",
+    "active": "进行中 Active",
+    "pending": "待执行 Pending",
+    "done": "已完成 Done"
+  },
+  "stages": [
+    {
+      "id": "detect",
+      "title": "检测 Detect",
+      "detail": "定位场景中的候选目标。 / Locate object candidates in the scene.",
+      "duration_seconds": 0.6
+    },
+    {
+      "id": "target_lock",
+      "title": "目标锁定 Target Lock",
+      "detail": "选择最终目标中心点和类别。 / Select the final target center and class.",
+      "duration_seconds": 0.6
+    },
+    {
+      "id": "path_plan",
+      "title": "路径规划 Path Plan",
+      "detail": "生成模拟抓取与放置路径。 / Build the simulated arm route for pick-and-place.",
+      "duration_seconds": 0.7
+    },
+    {
+      "id": "pick",
+      "title": "抓取 Pick",
+      "detail": "在演示时间线中执行抓取动作。 / Execute grasp motion in the demo timeline.",
+      "duration_seconds": 0.7
+    },
+    {
+      "id": "transfer",
+      "title": "转运 Transfer",
+      "detail": "将目标搬运到目标料箱上方。 / Carry the target above the destination bin.",
+      "duration_seconds": 0.55
+    },
+    {
+      "id": "place",
+      "title": "下放 Place",
+      "detail": "将目标下探到目标料箱内。 / Lower the target into the destination bin.",
+      "duration_seconds": 0.35
+    },
+    {
+      "id": "release",
+      "title": "释放 Release",
+      "detail": "张开夹具并将目标释放到料箱。 / Open the gripper and drop the target into the bin.",
+      "duration_seconds": 0.25
+    }
+  ],
+  "routes": [
+    {
+      "class_name": "stroller",
+      "destination_bin": "bin B"
+    },
+    {
+      "class_name": "phone",
+      "destination_bin": "bin C"
+    },
+    {
+      "class_name": "diaper",
+      "destination_bin": "bin A"
+    }
+  ],
+  "workflow_steps": [
+    {
+      "id": "input",
+      "title": "Input Acquisition",
+      "system_image": "photo",
+      "tint_hex": "#5C87FA",
+      "body": "加载样例图像或现场画面，形成后续视觉分析的统一输入。"
+    },
+    {
+      "id": "opencv",
+      "title": "OpenCV Processing",
+      "system_image": "camera.aperture",
+      "tint_hex": "#3882F5",
+      "body": "完成图像读写、尺寸处理、基础预处理、检测框叠加和坐标提取。"
+    },
+    {
+      "id": "pytorch",
+      "title": "PyTorch Inference",
+      "system_image": "bolt.circle",
+      "tint_hex": "#1FB388",
+      "body": "运行分类或检测模型，解析输出并生成目标类别、置信度和候选框。"
+    },
+    {
+      "id": "decision",
+      "title": "Industrial Vision Logic",
+      "system_image": "gearshape.2.fill",
+      "tint_hex": "#F5943D",
+      "body": "将视觉结果转为任务流程，完成目标选择、分拣决策和阶段推进。"
+    },
+    {
+      "id": "action",
+      "title": "Robot Action Demo",
+      "system_image": "dot.scope.display",
+      "tint_hex": "#AE75F2",
+      "body": "通过 Mission Timer、Task Stages 和执行摘要，把机械臂任务以演示方式表达出来。"
+    }
+  ],
+  "technology_cards": [
+    {
+      "id": "opencv",
+      "title": "OpenCV",
+      "system_image": "camera.filters",
+      "tint_hex": "#3882F5",
+      "body": "负责图像读写、预处理、结果叠加绘制与目标点位提取。"
+    },
+    {
+      "id": "pytorch",
+      "title": "PyTorch",
+      "system_image": "brain.filled.head.profile",
+      "tint_hex": "#1FB388",
+      "body": "负责分类/检测模型推理、输出解析与置信度评分。"
+    },
+    {
+      "id": "vision_logic",
+      "title": "Industrial Vision Logic",
+      "system_image": "gearshape.2",
+      "tint_hex": "#F5943D",
+      "body": "负责目标选择、任务编排与分拣流程模拟。"
+    }
+  ]
+}

@@ -54,6 +54,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <string>0.1.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSCameraUsageDescription</key>
+    <string>使用摄像头进行实时目标检测，并在应用中显示检测结果。</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

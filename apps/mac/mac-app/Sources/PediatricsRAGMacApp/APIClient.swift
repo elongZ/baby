@@ -126,6 +126,26 @@ struct APIClient {
         return try JSONDecoder().decode(DetectionPredictionResponse.self, from: data)
     }
 
+    func predictDetectionFrame(
+        jpegData: Data,
+        confidenceThreshold: Double? = nil,
+        iouThreshold: Double? = nil
+    ) async throws -> DetectionPredictionResponse {
+        var request = URLRequest(url: baseURL.appending(path: "detection/predict_frame"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            DetectionFramePredictRequest(
+                imageBase64: jpegData.base64EncodedString(),
+                confidenceThreshold: confidenceThreshold,
+                iouThreshold: iouThreshold
+            )
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode(DetectionPredictionResponse.self, from: data)
+    }
+
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)

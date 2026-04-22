@@ -15,6 +15,7 @@ classes:
   names:
   - diaper
   - stroller
+  - phone
 train:
   model_name: yolov8n.pt
   device: cpu
@@ -28,6 +29,6 @@ eval:
   iou_threshold: 0.7
   save_json: false
 infer:
-  confidence_threshold: 0.85
+  confidence_threshold: 0.25
   iou_threshold: 0.7
   save_dir: detection/outputs/predict

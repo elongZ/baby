@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 
 from detection.scripts.common import (
     build_dataset_yaml,
@@ -16,6 +17,10 @@ try:
     import numpy as np
 except Exception:  # pragma: no cover - optional dependency for frame inference
     np = None
+
+
+_SESSION_CACHE: dict[tuple[str, float | None, float | None], "DetectionSession"] = {}
+_SESSION_CACHE_LOCK = Lock()
 
 
 def _format_detection_ratio(value: float) -> str:
@@ -285,9 +290,45 @@ def predict_image(
     confidence_threshold: float | None = None,
     iou_threshold: float | None = None,
 ) -> dict:
-    session = DetectionSession.from_config(
+    session = get_detection_session(
         config_path=config_path,
         confidence_threshold=confidence_threshold,
         iou_threshold=iou_threshold,
     )
     return session.predict_image(image_path)
+
+
+def predict_frame(
+    frame_rgb: "np.ndarray",
+    config_path: str | Path = "detection/configs/detection.yaml",
+    confidence_threshold: float | None = None,
+    iou_threshold: float | None = None,
+) -> dict:
+    session = get_detection_session(
+        config_path=config_path,
+        confidence_threshold=confidence_threshold,
+        iou_threshold=iou_threshold,
+    )
+    return session.predict_frame(frame_rgb)
+
+
+def get_detection_session(
+    config_path: str | Path = "detection/configs/detection.yaml",
+    confidence_threshold: float | None = None,
+    iou_threshold: float | None = None,
+) -> DetectionSession:
+    cache_key = (
+        str(Path(config_path).expanduser().resolve()),
+        float(confidence_threshold) if confidence_threshold is not None else None,
+        float(iou_threshold) if iou_threshold is not None else None,
+    )
+    with _SESSION_CACHE_LOCK:
+        session = _SESSION_CACHE.get(cache_key)
+        if session is None:
+            session = DetectionSession.from_config(
+                config_path=config_path,
+                confidence_threshold=confidence_threshold,
+                iou_threshold=iou_threshold,
+            )
+            _SESSION_CACHE[cache_key] = session
+        return session

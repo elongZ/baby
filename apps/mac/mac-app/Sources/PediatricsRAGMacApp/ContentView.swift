@@ -3,6 +3,12 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @State private var roboticsDemoStageIndex = -1
+    @State private var roboticsDemoElapsed = 0.0
+    @State private var roboticsDemoIsComplete = false
+    @State private var roboticsTimelineTask: Task<Void, Never>?
+    @State private var roboticsDebugStageIndex: Int?
+    @State private var roboticsDebugStageProgress = 0.5
     private let groupedSections = Dictionary(grouping: AppSection.allCases, by: \.groupTitle)
     private let titleBarInset: CGFloat = 28
     private let sidebarTrafficLightsClearance: CGFloat = 44
@@ -26,7 +32,7 @@ struct ContentView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
-                    ForEach(["RAG", "Vision", "Detection"], id: \.self) { groupTitle in
+                    ForEach(["RAG", "Vision", "Detection", "Robotics"], id: \.self) { groupTitle in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(groupTitle)
                                 .font(.caption.weight(.semibold))
@@ -107,6 +113,10 @@ struct ContentView: View {
             detectionTrainingDetail
         case .detectionEvaluation:
             detectionEvaluationDetail
+        case .roboticsPlayground:
+            roboticsPlaygroundDetail
+        case .roboticsWorkflow:
+            roboticsWorkflowDetail
         }
     }
 
@@ -427,6 +437,9 @@ struct ContentView: View {
                 if !viewModel.detectionErrorMessage.isEmpty {
                     warningBanner(viewModel.detectionErrorMessage)
                 }
+                if !viewModel.detectionCameraDemoErrorMessage.isEmpty {
+                    warningBanner(viewModel.detectionCameraDemoErrorMessage)
+                }
                 detectionPlaygroundToolbar
                 detectionMetrics
                 HStack(alignment: .top, spacing: 16) {
@@ -508,6 +521,494 @@ struct ContentView: View {
         .background(detailBackground)
     }
 
+    private var roboticsPlaygroundDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if !viewModel.detectionErrorMessage.isEmpty {
+                    warningBanner(viewModel.detectionErrorMessage)
+                }
+                if !viewModel.detectionCameraDemoErrorMessage.isEmpty {
+                    warningBanner(viewModel.detectionCameraDemoErrorMessage)
+                }
+
+                glassPanel(title: "Robotics Console", systemImage: "dot.scope.and.hand.point.up.left.fill", minHeight: 156) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(alignment: .top, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("视觉引导机械臂演示")
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                Text("把 Detection 结果直接映射成机械臂任务时间线、抓取点和分拣动作，用一页完成从场景识别到执行演示。")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+
+                                HStack(spacing: 10) {
+                                    TrainingStatusBadge(title: viewModel.roboticsConfig.mode, tint: Color(red: 0.25, green: 0.50, blue: 0.95))
+                                    TrainingStatusBadge(title: viewModel.roboticsConfig.scenario, tint: Color(red: 0.10, green: 0.69, blue: 0.56))
+                                    TrainingStatusBadge(title: roboticsStatusLabel, tint: Color(red: 0.96, green: 0.58, blue: 0.24))
+                                    if roboticsIsDebugMode {
+                                        TrainingStatusBadge(title: "Manual Debug", tint: Color(red: 0.47, green: 0.56, blue: 0.98))
+                                    }
+                                }
+                            }
+
+                            Spacer(minLength: 12)
+
+                            VStack(alignment: .trailing, spacing: 10) {
+                                HStack(spacing: 10) {
+                                    Button {
+                                        viewModel.launchDetectionCameraDemo()
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            if viewModel.isLaunchingDetectionCameraDemo {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            } else {
+                                                Image(systemName: "video.badge.waveform")
+                                            }
+                                            Text(viewModel.isDetectionCameraDemoRunning ? "Camera Running" : "Start Camera Demo")
+                                        }
+                                        .frame(minWidth: 150)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(viewModel.isLaunchingDetectionCameraDemo || viewModel.isDetectionCameraDemoRunning)
+
+                                    Button {
+                                        viewModel.stopDetectionCameraDemo()
+                                    } label: {
+                                        Label("Stop Camera", systemImage: "stop.circle")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(!viewModel.isDetectionCameraDemoRunning)
+
+                                    Button {
+                                        let previousPath = viewModel.selectedDetectionImagePath
+                                        viewModel.selectDetectionImage()
+                                        if !viewModel.selectedDetectionImagePath.isEmpty, viewModel.selectedDetectionImagePath != previousPath {
+                                            startRoboticsTimeline()
+                                        }
+                                    } label: {
+                                        if viewModel.isPickingDetectionImage {
+                                            ProgressView().frame(width: 96)
+                                        } else {
+                                            Label("Choose Image", systemImage: "photo")
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+
+                                    Button {
+                                        startRoboticsTimeline()
+                                        viewModel.runRoboticsSampleDemo()
+                                    } label: {
+                                        Label("Load Sample Image", systemImage: "sparkles.rectangle.stack")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(viewModel.isRunningDetectionPrediction)
+
+                                    Button {
+                                        startRoboticsTimeline()
+                                        viewModel.runDetectionPrediction()
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            if viewModel.isRunningDetectionPrediction {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            } else {
+                                                Image(systemName: "bolt.circle")
+                                            }
+                                            Text(viewModel.isRunningDetectionPrediction ? "Running..." : (roboticsIsDebugMode ? "Run Auto Timeline" : "Run Current Image"))
+                                        }
+                                        .frame(minWidth: 144)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(viewModel.selectedDetectionImagePath.isEmpty || viewModel.isRunningDetectionPrediction)
+
+                                    Button {
+                                        viewModel.refreshDetectionStatus()
+                                    } label: {
+                                        Label("Refresh", systemImage: "arrow.clockwise")
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+
+                                Text(viewModel.selectedDetectionImagePath.isEmpty ? "No image selected." : viewModel.selectedDetectionImagePath)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 520, alignment: .trailing)
+                                    .textSelection(.enabled)
+                            }
+                        }
+
+                        HStack(spacing: 14) {
+                            MetricTile(title: "Task", value: roboticsTaskLabel)
+                            MetricTile(title: "Target", value: roboticsTargetLabel)
+                            MetricTile(title: "Planner", value: roboticsPlannerLabel)
+                            MetricTile(title: "Route", value: roboticsDestinationBinLabel)
+                            MetricTile(title: "Camera", value: detectionCameraStatusLabel)
+                        }
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 16) {
+                    glassPanel(title: "Execution Stage", systemImage: "move.3d", minHeight: 560) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(alignment: .top, spacing: 14) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Label("Detection Scene", systemImage: "photo")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+
+                                    if viewModel.isDetectionCameraDemoRunning, let session = viewModel.liveCameraSession {
+                                        ZStack {
+                                            CameraPreviewView(session: session)
+                                            DetectionOverlayView(
+                                                detections: viewModel.detectionPrediction?.detections ?? [],
+                                                frameSize: viewModel.liveCameraFrameSize
+                                            )
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: 360, maxHeight: 450)
+                                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                    } else if let image = detectionRenderedPreviewImage ?? detectionOriginalPreviewImage {
+                                        Image(nsImage: image)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(maxWidth: .infinity, minHeight: 360, maxHeight: 450)
+                                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [
+                                                        Color(red: 0.16, green: 0.21, blue: 0.31),
+                                                        Color(red: 0.08, green: 0.11, blue: 0.18)
+                                                    ],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .frame(minHeight: 360)
+                                            .overlay {
+                                                VStack(spacing: 12) {
+                                                    Image(systemName: "viewfinder.circle.fill")
+                                                        .font(.system(size: 46))
+                                                        .foregroundStyle(.white.opacity(0.9))
+                                                    Text(viewModel.roboticsConfig.emptyStateTitle)
+                                                        .font(.headline)
+                                                        .foregroundStyle(.white)
+                                                }
+                                            }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Label("Robot Motion", systemImage: "move.3d")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+
+                                    RobotArmSimulationView(state: roboticsSimulationState)
+                                        .frame(maxWidth: .infinity, minHeight: 360, maxHeight: 450)
+                                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                        }
+                                }
+                                .frame(width: 430)
+                            }
+
+                            HStack(spacing: 12) {
+                                DetectionOverviewTile(title: "Target Class", value: roboticsTargetLabel, tint: Color(red: 0.22, green: 0.51, blue: 0.95))
+                                DetectionOverviewTile(title: "Confidence", value: roboticsTargetConfidenceLabel, tint: Color(red: 0.12, green: 0.70, blue: 0.56))
+                                DetectionOverviewTile(title: "Pick Point", value: roboticsPickPointLabel, tint: Color(red: 0.96, green: 0.58, blue: 0.24))
+                                DetectionOverviewTile(title: "Preprocess", value: detectionPreprocessSummaryLabel, tint: Color(red: 0.55, green: 0.48, blue: 0.94))
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        glassPanel(title: roboticsBilingualLabel("mission_timer", fallback: "任务计时 Mission Timer"), systemImage: "timer", minHeight: 160) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(roboticsElapsedTimeLabel)
+                                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                                HStack(spacing: 12) {
+                                    MetricTile(title: roboticsStageMetricTitle, value: roboticsCurrentStage)
+                                    MetricTile(title: roboticsNextActionMetricTitle, value: roboticsNextAction)
+                                }
+                            }
+                        }
+
+                        glassPanel(title: "Stage Debugger", systemImage: "timeline.selection", minHeight: 420) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 8) {
+                                    Button {
+                                        setRoboticsDebugStage(max(roboticsEffectiveStageIndex - 1, 0))
+                                    } label: {
+                                        Label("Previous", systemImage: "chevron.left")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(viewModel.roboticsConfig.stages.isEmpty || roboticsEffectiveStageIndex <= 0)
+
+                                    Button {
+                                        if roboticsIsDebugMode {
+                                            clearRoboticsDebugStage()
+                                        } else {
+                                            setRoboticsDebugStage(max(roboticsEffectiveStageIndex, 0))
+                                        }
+                                    } label: {
+                                        Label(roboticsIsDebugMode ? "Exit Debug" : "Debug Current", systemImage: roboticsIsDebugMode ? "play.fill" : "cursorarrow.click")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(viewModel.roboticsConfig.stages.isEmpty)
+
+                                    Button {
+                                        setRoboticsDebugStage(min(roboticsEffectiveStageIndex + 1, viewModel.roboticsConfig.stages.count - 1))
+                                    } label: {
+                                        Label("Next", systemImage: "chevron.right")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(viewModel.roboticsConfig.stages.isEmpty || roboticsEffectiveStageIndex >= viewModel.roboticsConfig.stages.count - 1)
+                                }
+
+                                Text(roboticsDebugHint)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                if roboticsIsDebugMode {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        HStack {
+                                            Text("Stage Progress")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                            Spacer()
+                                            Text("\(Int(roboticsDebugStageProgress * 100))%")
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Slider(value: $roboticsDebugStageProgress, in: 0...1)
+
+                                        let options = roboticsDebugPhaseOptions(for: roboticsStageID)
+                                        if !options.isEmpty {
+                                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: 8)], spacing: 8) {
+                                                ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                                                    Button(option.label) {
+                                                        roboticsDebugStageProgress = option.progress
+                                                    }
+                                                    .buttonStyle(.bordered)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                    ForEach(Array(viewModel.roboticsConfig.stages.enumerated()), id: \.element.id) { index, stage in
+                                        Button {
+                                            setRoboticsDebugStage(index)
+                                        } label: {
+                                            HStack {
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(stage.title)
+                                                        .font(.subheadline.weight(.semibold))
+                                                        .multilineTextAlignment(.leading)
+                                                    Text(stage.detail)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(2)
+                                                }
+                                                Spacer(minLength: 8)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 10)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                    .fill(index == roboticsEffectiveStageIndex ? roboticsStageTint(index).opacity(0.18) : Color.white.opacity(0.04))
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .stroke((index == roboticsEffectiveStageIndex ? roboticsStageTint(index) : Color.white.opacity(0.08)), lineWidth: 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        glassPanel(title: roboticsBilingualLabel("task_stages", fallback: "任务阶段 Task Stages"), systemImage: "list.bullet.clipboard", minHeight: 560) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(Array(viewModel.roboticsConfig.stages.enumerated()), id: \.element.id) { index, stage in
+                                    RoboticsStageRow(title: stage.title, status: roboticsStageStatus(index), tint: roboticsStageTint(index), detail: stage.detail)
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: 360)
+                }
+
+                HStack(alignment: .top, spacing: 16) {
+                    glassPanel(title: "Decision and Reasoning", systemImage: "brain.head.profile", minHeight: 260) {
+                        HStack(alignment: .top, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Target Lock")
+                                    .font(.headline)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("selection", fallback: "Selection"), value: roboticsSelectionReasonLabel)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("center", fallback: "Center"), value: roboticsPickPointLabel)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("box", fallback: "Box"), value: roboticsBoundingBoxLabel)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("confidence", fallback: "Confidence"), value: roboticsTargetConfidenceLongLabel)
+                                Divider()
+                                Text(roboticsTargetLockNarrative)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+
+                            Divider()
+
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Routing Logic")
+                                    .font(.headline)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("input_class", fallback: "Input Class"), value: roboticsTargetLabel)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("rule", fallback: "Rule"), value: roboticsRoutingRuleLabel)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("output_bin", fallback: "Output Bin"), value: roboticsDestinationBinLabel)
+                                RoboticsKeyValueRow(label: roboticsReasoningLabel("planner", fallback: "Planner"), value: roboticsPlannerLabel)
+                                Divider()
+                                Text(roboticsDecisionNarrative)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        glassPanel(title: "Action Summary", systemImage: "checkmark.seal", minHeight: 178) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                RoboticsKeyValueRow(label: roboticsSummaryLabel("decision", fallback: "Decision"), value: roboticsDecisionLabel)
+                                RoboticsKeyValueRow(label: roboticsSummaryLabel("execution", fallback: "Execution"), value: viewModel.roboticsConfig.actionExecutionLabel)
+                                RoboticsKeyValueRow(label: roboticsSummaryLabel("result", fallback: "Result"), value: roboticsStatusLabel)
+                                RoboticsKeyValueRow(label: roboticsSummaryLabel("runtime", fallback: "Runtime"), value: "\(viewModel.detectionStatus?.device ?? "-") | conf \(detectionConfidenceLabel) | IoU \(detectionIoULabel)")
+                            }
+                        }
+
+                        glassPanel(title: "Technology Stack", systemImage: "cpu", minHeight: 240) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(viewModel.roboticsConfig.technologyCards) { card in
+                                    AnswerSectionCard(
+                                        title: card.title,
+                                        systemImage: card.systemImage,
+                                        tint: colorFromHex(card.tintHex),
+                                        text: card.body
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: 360)
+                }
+
+                glassPanel(title: "Runtime Snapshot", systemImage: "waveform.path.ecg", minHeight: 132) {
+                    HStack(spacing: 14) {
+                        MetricTile(title: "Model", value: roboticsModelLabel)
+                        MetricTile(title: "Device", value: roboticsDeviceLabel)
+                        MetricTile(title: "Rendered", value: roboticsRenderedImageName)
+                        MetricTile(title: "Image", value: roboticsSelectedImageName)
+                    }
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.bottom, 22)
+            .padding(.top, detailTopPadding)
+        }
+        .onChange(of: viewModel.selectedDetectionImagePath) { _, _ in
+            resetRoboticsTimeline()
+        }
+        .background(detailBackground)
+    }
+
+    private var roboticsWorkflowDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                glassPanel(title: "Workflow", systemImage: "point.3.connected.trianglepath.dotted", minHeight: 120) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(viewModel.roboticsConfig.workflowTitle)
+                            .font(.title3.weight(.semibold))
+                        Text(viewModel.roboticsConfig.workflowSubtitle)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(spacing: 14) {
+                    MetricTile(title: "Step 1", value: "Input")
+                    MetricTile(title: "Step 2", value: "OpenCV")
+                    MetricTile(title: "Step 3", value: "PyTorch")
+                    MetricTile(title: "Step 4", value: "Decision")
+                    MetricTile(title: "Step 5", value: "Robot Action")
+                }
+
+                HStack(spacing: 14) {
+                    MetricTile(title: "Model", value: roboticsModelLabel)
+                    MetricTile(title: "Device", value: roboticsDeviceLabel)
+                    MetricTile(title: "Conf", value: detectionConfidenceLabel)
+                    MetricTile(title: "IoU", value: detectionIoULabel)
+                    MetricTile(title: "Target", value: roboticsTargetLabel)
+                    MetricTile(title: "Preprocess", value: detectionPreprocessSummaryLabel)
+                }
+
+                glassPanel(title: "Pipeline Overview", systemImage: "arrow.right.circle", minHeight: 180) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(viewModel.roboticsConfig.pipelineOverviewTitle)
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        Text(roboticsWorkflowOverviewText)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(viewModel.roboticsConfig.workflowSteps.prefix(3)) { step in
+                        AnswerSectionCard(
+                            title: step.title,
+                            systemImage: step.systemImage,
+                            tint: colorFromHex(step.tintHex),
+                            text: roboticsWorkflowCardText(for: step)
+                        )
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(viewModel.roboticsConfig.workflowSteps.dropFirst(3)) { step in
+                        AnswerSectionCard(
+                            title: step.title,
+                            systemImage: step.systemImage,
+                            tint: colorFromHex(step.tintHex),
+                            text: roboticsWorkflowCardText(for: step)
+                        )
+                    }
+                }
+
+                glassPanel(title: "Runtime Snapshot", systemImage: "waveform.path.ecg", minHeight: 220) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("image", fallback: "Image"), value: roboticsSelectedImageName)
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("rendered", fallback: "Rendered"), value: roboticsRenderedImageName)
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("target", fallback: "Target"), value: roboticsTargetLabel)
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("pick_point", fallback: "Pick Point"), value: roboticsPickPointLabel)
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("decision", fallback: "Decision"), value: roboticsDecisionLabel)
+                        RoboticsKeyValueRow(label: "Camera", value: detectionCameraStatusLabel)
+                        RoboticsKeyValueRow(label: "Preprocess", value: detectionPreprocessStepsLabel)
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("stage", fallback: "Stage"), value: roboticsCurrentStage)
+                        RoboticsKeyValueRow(label: roboticsRuntimeLabel("next", fallback: "Next"), value: roboticsNextAction)
+                    }
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.bottom, 22)
+            .padding(.top, detailTopPadding)
+        }
+        .background(detailBackground)
+    }
+
     private var detailBackground: some View {
         LinearGradient(
             colors: [Color(nsColor: .windowBackgroundColor), Color(nsColor: .underPageBackgroundColor)],
@@ -552,6 +1053,31 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Button {
+                        viewModel.launchDetectionCameraDemo()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if viewModel.isLaunchingDetectionCameraDemo {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "video.badge.waveform")
+                            }
+                            Text(viewModel.isDetectionCameraDemoRunning ? "Camera Running" : "Start Camera")
+                        }
+                        .frame(minWidth: 144)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isLaunchingDetectionCameraDemo || viewModel.isDetectionCameraDemoRunning)
+
+                    Button {
+                        viewModel.stopDetectionCameraDemo()
+                    } label: {
+                        Label("Stop Camera", systemImage: "stop.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isDetectionCameraDemoRunning)
+
+                    Button {
                         viewModel.selectDetectionImage()
                     } label: {
                         if viewModel.isPickingDetectionImage {
@@ -591,6 +1117,13 @@ struct ContentView: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+
+                HStack(spacing: 14) {
+                    MetricTile(title: "Camera", value: detectionCameraStatusLabel)
+                    MetricTile(title: "Preprocess", value: detectionPreprocessSummaryLabel)
+                    MetricTile(title: "Pick Point", value: roboticsPickPointLabel)
+                    MetricTile(title: "Decision", value: roboticsDecisionLabel)
+                }
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -632,6 +1165,8 @@ struct ContentView: View {
             MetricTile(title: "Conf", value: detectionConfidenceLabel)
             MetricTile(title: "IoU", value: detectionIoULabel)
             MetricTile(title: "Boxes", value: viewModel.detectionPrediction.map { "\($0.detectionCount)" } ?? "-")
+            MetricTile(title: "Target", value: roboticsTargetLabel)
+            MetricTile(title: "Route", value: roboticsDestinationBinLabel)
         }
     }
 
@@ -680,11 +1215,27 @@ struct ContentView: View {
 
     private var detectionDatasetMetrics: some View {
         HStack(spacing: 14) {
+            MetricTile(title: "Pending", value: "\(viewModel.detectionDatasetCount(bucket: .pending))")
             MetricTile(title: "Train", value: "\(viewModel.detectionDatasetCount(bucket: .train))")
             MetricTile(title: "Val", value: "\(viewModel.detectionDatasetCount(bucket: .val))")
             MetricTile(title: "Test", value: "\(viewModel.detectionDatasetCount(bucket: .test))")
             MetricTile(title: "Rejected", value: "\(viewModel.detectionDatasetCount(bucket: .rejected))")
             MetricTile(title: "Current View", value: "\(viewModel.filteredDetectionDatasetSamples.count)")
+        }
+    }
+
+    private var currentDetectionDatasetClassLabel: String {
+        switch viewModel.selectedDetectionDatasetClassFilter {
+        case .all:
+            return "All"
+        case .diaper:
+            return "diaper"
+        case .stroller:
+            return "stroller"
+        case .phone:
+            return "phone"
+        case .unlabeled:
+            return "Unlabeled"
         }
     }
 
@@ -1127,7 +1678,17 @@ struct ContentView: View {
 
     private var detectionImagePanel: some View {
         glassPanel(title: "Rendered Detection", systemImage: "photo", minHeight: 360) {
-            if let image = detectionRenderedPreviewImage ?? detectionOriginalPreviewImage {
+            if viewModel.isDetectionCameraDemoRunning, let session = viewModel.liveCameraSession {
+                ZStack {
+                    CameraPreviewView(session: session)
+                    DetectionOverlayView(
+                        detections: viewModel.detectionPrediction?.detections ?? [],
+                        frameSize: viewModel.liveCameraFrameSize
+                    )
+                }
+                .frame(maxWidth: .infinity, minHeight: 300, maxHeight: 420)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else if let image = detectionRenderedPreviewImage ?? detectionOriginalPreviewImage {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -1168,6 +1729,8 @@ struct ContentView: View {
                         keyValueRow("Runtime", "\(viewModel.detectionStatus?.device ?? "-") | conf \(detectionConfidenceLabel) | IoU \(detectionIoULabel)")
                         keyValueRow("Classes", (viewModel.detectionStatus?.classNames ?? []).joined(separator: ", ").isEmpty ? "-" : (viewModel.detectionStatus?.classNames ?? []).joined(separator: ", "))
                         keyValueRow("Weights", (viewModel.detectionPrediction?.weightsPath as NSString?)?.lastPathComponent ?? (viewModel.detectionStatus?.weightsPath as NSString?)?.lastPathComponent ?? "-")
+                        keyValueRow("Center Pick", roboticsPickPointLabel)
+                        keyValueRow("Decision", roboticsDecisionLabel)
                     }
                     .padding(.bottom, 6)
                 }
@@ -1838,6 +2401,539 @@ struct ContentView: View {
             partial + item.confidence
         } / Double(detections.count)
         return String(format: "%.2f", average)
+    }
+
+    private var roboticsTopDetection: DetectionBox? {
+        viewModel.detectionPrediction?.robotics?.target
+        ?? viewModel.detectionPrediction?.detections.max(by: { $0.confidence < $1.confidence })
+    }
+
+    private var roboticsHasPrediction: Bool {
+        !(viewModel.detectionPrediction?.detections.isEmpty ?? true)
+    }
+
+    private var roboticsTaskLabel: String {
+        guard roboticsHasPrediction else { return viewModel.roboticsConfig.idleTask }
+        return viewModel.roboticsConfig.taskTemplate.replacingOccurrences(of: "{label}", with: roboticsTargetLabel)
+    }
+
+    private var roboticsStatusLabel: String {
+        if roboticsIsDebugMode {
+            return "Debug"
+        }
+        if viewModel.isRunningDetectionPrediction {
+            return "Running"
+        }
+        if roboticsDemoIsComplete {
+            return "Complete"
+        }
+        if roboticsHasPrediction {
+            return "Ready"
+        }
+        if !viewModel.selectedDetectionImagePath.isEmpty {
+            return "Image Loaded"
+        }
+        return "Idle"
+    }
+
+    private var roboticsTargetLabel: String {
+        roboticsTopDetection?.label ?? "-"
+    }
+
+    private var roboticsTargetConfidenceLabel: String {
+        guard let confidence = roboticsTopDetection?.confidence else { return "-" }
+        return String(format: "%.2f", confidence)
+    }
+
+    private var roboticsTargetConfidenceLongLabel: String {
+        guard let confidence = roboticsTopDetection?.confidence else { return "-" }
+        return String(format: "%.4f", confidence)
+    }
+
+    private var roboticsPickPointLabel: String {
+        if let pickPoint = viewModel.detectionPrediction?.robotics?.pickPoint {
+            return "(\(Int(pickPoint.x)), \(Int(pickPoint.y)))"
+        }
+        guard let box = roboticsTopDetection?.box, box.count >= 4 else { return "-" }
+        let x = (box[0] + box[2]) / 2
+        let y = (box[1] + box[3]) / 2
+        return "(\(Int(x)), \(Int(y)))"
+    }
+
+    private var roboticsBoundingBoxLabel: String {
+        guard let box = roboticsTopDetection?.box, box.count >= 4 else { return "-" }
+        return box.map { String(Int($0)) }.joined(separator: ", ")
+    }
+
+    private var roboticsElapsedTimeLabel: String {
+        if roboticsIsDebugMode {
+            return "Manual"
+        }
+        return String(format: "%.1fs", roboticsDemoElapsed)
+    }
+
+    private var roboticsStageMetricTitle: String {
+        if roboticsIsDebugMode {
+            return "Debug Stage"
+        }
+        return roboticsBilingualLabel("current_stage", fallback: "当前阶段 Current Stage")
+    }
+
+    private var roboticsNextActionMetricTitle: String {
+        if roboticsIsDebugMode {
+            return "Auto Timeline"
+        }
+        return roboticsBilingualLabel("next_action", fallback: "下一步 Next Action")
+    }
+
+    private var roboticsCurrentStage: String {
+        guard roboticsEffectiveStageIndex >= 0, roboticsEffectiveStageIndex < viewModel.roboticsConfig.stages.count else {
+            return !viewModel.selectedDetectionImagePath.isEmpty ? "Ready" : "Idle"
+        }
+        return viewModel.roboticsConfig.stages[roboticsEffectiveStageIndex].title
+    }
+
+    private var roboticsStageID: String {
+        if roboticsIsDebugMode,
+           roboticsEffectiveStageIndex >= 0,
+           roboticsEffectiveStageIndex < viewModel.roboticsConfig.stages.count {
+            return viewModel.roboticsConfig.stages[roboticsEffectiveStageIndex].id
+        }
+        if roboticsDemoIsComplete {
+            return "complete"
+        }
+        guard roboticsDemoStageIndex >= 0, roboticsDemoStageIndex < viewModel.roboticsConfig.stages.count else {
+            return !viewModel.selectedDetectionImagePath.isEmpty ? "ready" : "idle"
+        }
+        return viewModel.roboticsConfig.stages[roboticsDemoStageIndex].id
+    }
+
+    private var roboticsNextAction: String {
+        if roboticsIsDebugMode {
+            let nextIndex = roboticsEffectiveStageIndex + 1
+            if nextIndex >= 0, nextIndex < viewModel.roboticsConfig.stages.count {
+                return "Paused at \(viewModel.roboticsConfig.stages[roboticsEffectiveStageIndex].title)"
+            }
+            return "Paused in Debug"
+        }
+        if roboticsDemoIsComplete {
+            return "Demo Complete"
+        }
+        let nextIndex = roboticsDemoStageIndex + 1
+        if nextIndex >= 0, nextIndex < viewModel.roboticsConfig.stages.count {
+            return viewModel.roboticsConfig.stages[nextIndex].title
+        }
+        return !viewModel.selectedDetectionImagePath.isEmpty ? "Run Detection" : "Choose Image"
+    }
+
+    private var roboticsDecisionLabel: String {
+        guard roboticsHasPrediction else { return "Awaiting detection result" }
+        return "Send \(roboticsTargetLabel) to \(roboticsDestinationBinLabel)"
+    }
+
+    private var roboticsDestinationBinLabel: String {
+        guard roboticsHasPrediction else { return "-" }
+        if let destinationBin = viewModel.detectionPrediction?.robotics?.destinationBin, !destinationBin.isEmpty {
+            return destinationBin
+        }
+        return viewModel.roboticsConfig.routes.first(where: { $0.className == roboticsTargetLabel })?.destinationBin
+            ?? viewModel.roboticsConfig.defaultDestinationBin
+    }
+
+    private var roboticsRoutingRuleLabel: String {
+        guard roboticsHasPrediction else { return "\(viewModel.roboticsConfig.routeRuleDescription) is idle until a target is detected." }
+        if let routeRule = viewModel.detectionPrediction?.robotics?.routeRule, !routeRule.isEmpty {
+            return routeRule
+        }
+        return "\(roboticsTargetLabel) -> \(roboticsDestinationBinLabel)"
+    }
+
+    private var roboticsSelectionReasonLabel: String {
+        guard roboticsHasPrediction else { return "No target locked yet" }
+        if let selectionReason = viewModel.detectionPrediction?.robotics?.selectionReason, !selectionReason.isEmpty {
+            return selectionReason
+        }
+        return "Highest-confidence detection selected as the active target."
+    }
+
+    private var roboticsPlannerLabel: String {
+        guard roboticsHasPrediction else { return "Waiting for detection output" }
+        if let planner = viewModel.detectionPrediction?.robotics?.planner, !planner.isEmpty {
+            return planner
+        }
+        return viewModel.roboticsConfig.planner
+    }
+
+    private var roboticsTargetPointNormalized: RobotArmSimulationState.Point? {
+        guard
+            let imageSize = detectionOriginalPreviewImage?.size,
+            imageSize.width > 0,
+            imageSize.height > 0
+        else {
+            return nil
+        }
+
+        let centerX: Double
+        let centerY: Double
+        if let pickPoint = viewModel.detectionPrediction?.robotics?.pickPoint {
+            centerX = pickPoint.x
+            centerY = pickPoint.y
+        } else if
+            let box = roboticsTopDetection?.box,
+            box.count >= 4
+        {
+            centerX = (box[0] + box[2]) / 2
+            centerY = (box[1] + box[3]) / 2
+        } else {
+            return nil
+        }
+
+        return RobotArmSimulationState.Point(
+            x: min(max(centerX / imageSize.width, 0.05), 0.95),
+            y: min(max(centerY / imageSize.height, 0.05), 0.95)
+        )
+    }
+
+    private var roboticsSimulationState: RobotArmSimulationState {
+        RobotArmSimulationState(
+            status: roboticsIsDebugMode ? "Debug" : roboticsStatusLabel,
+            stageTitle: roboticsCurrentStage,
+            stageID: roboticsStageID,
+            targetClass: roboticsTargetLabel,
+            destinationBin: roboticsDestinationBinLabel,
+            elapsedSeconds: roboticsIsDebugMode ? 0 : roboticsDemoElapsed,
+            stageProgress: roboticsStageProgress,
+            confidence: roboticsTopDetection?.confidence,
+            targetPoint: roboticsTargetPointNormalized,
+            hasTarget: roboticsHasPrediction
+        )
+    }
+
+    private var roboticsStageProgress: Double {
+        if roboticsIsDebugMode {
+            return roboticsDebugStageProgress
+        }
+        guard
+            roboticsDemoStageIndex >= 0,
+            roboticsDemoStageIndex < viewModel.roboticsConfig.stages.count
+        else {
+            return roboticsDemoIsComplete ? 1.0 : 0.0
+        }
+
+        let currentStage = viewModel.roboticsConfig.stages[roboticsDemoStageIndex]
+        let elapsedBeforeCurrentStage = viewModel.roboticsConfig.stages
+            .prefix(roboticsDemoStageIndex)
+            .reduce(0.0) { partial, stage in
+                partial + stage.durationSeconds
+            }
+
+        let progress = (roboticsDemoElapsed - elapsedBeforeCurrentStage) / max(currentStage.durationSeconds, 0.001)
+        return min(max(progress, 0.0), 1.0)
+    }
+
+    private var roboticsEffectiveStageIndex: Int {
+        if let debugIndex = roboticsDebugStageIndex {
+            return debugIndex
+        }
+        return roboticsDemoStageIndex
+    }
+
+    private var roboticsIsDebugMode: Bool {
+        roboticsDebugStageIndex != nil
+    }
+
+    private var roboticsDebugHint: String {
+        if roboticsIsDebugMode {
+            return "Manual debug is active. The automatic timeline is paused, and every stage panel on this page now follows the debug selection. Previous / Next jumps to each stage's representative debug frame."
+        }
+        return "Click any stage to freeze the arm on that step. Use Previous / Next to walk the motion chain."
+    }
+
+    private func roboticsDebugPhaseOptions(for stageID: String) -> [(label: String, progress: Double)] {
+        switch stageID {
+        case "pick":
+            return [
+                ("Above Target", 0.22),
+                ("Grip Close", 0.62),
+                ("Attached", 0.76),
+                ("Lift", 0.90)
+            ]
+        case "transfer":
+            return [
+                ("Leave Target", 0.18),
+                ("Transport", 0.50),
+                ("Above Bin", 0.82)
+            ]
+        case "place":
+            return [
+                ("Above Bin", 0.18),
+                ("Lower", 0.58),
+                ("At Bin", 0.94)
+            ]
+        case "release":
+            return [
+                ("Hold", 0.18),
+                ("Drop", 0.58),
+                ("Settled", 0.94)
+            ]
+        case "target_lock":
+            return [
+                ("Approach", 0.35),
+                ("Align", 0.78)
+            ]
+        default:
+            return []
+        }
+    }
+
+    private var roboticsTargetLockNarrative: String {
+        guard roboticsHasPrediction else {
+            return viewModel.roboticsConfig.targetLockNarrativeEmpty
+        }
+        if let selectionReason = viewModel.detectionPrediction?.robotics?.selectionReason, !selectionReason.isEmpty {
+            return "\(selectionReason) \(viewModel.roboticsConfig.targetLockNarrativeBody)"
+        }
+        return viewModel.roboticsConfig.targetLockNarrativeBody
+    }
+
+    private var roboticsDecisionNarrative: String {
+        guard roboticsHasPrediction else {
+            return viewModel.roboticsConfig.decisionNarrativeEmpty
+        }
+        if let routeRule = viewModel.detectionPrediction?.robotics?.routeRule, !routeRule.isEmpty {
+            return "\(routeRule)。\(viewModel.roboticsConfig.decisionNarrativeBody)"
+        }
+        return viewModel.roboticsConfig.decisionNarrativeBody
+    }
+
+    private var roboticsModelLabel: String {
+        viewModel.detectionStatus?.modelName ?? "-"
+    }
+
+    private var roboticsDeviceLabel: String {
+        viewModel.detectionStatus?.device ?? "-"
+    }
+
+    private var roboticsSelectedImageName: String {
+        guard !viewModel.selectedDetectionImagePath.isEmpty else { return "-" }
+        return (viewModel.selectedDetectionImagePath as NSString).lastPathComponent
+    }
+
+    private var roboticsRenderedImageName: String {
+        guard let path = viewModel.detectionPrediction?.renderedImagePath, !path.isEmpty else { return "-" }
+        return (path as NSString).lastPathComponent
+    }
+
+    private var roboticsWorkflowOverviewText: String {
+        if roboticsHasPrediction {
+            return "当前工作流已经读取检测结果，并把目标 \(roboticsTargetLabel) 转成 \(roboticsDestinationBinLabel) 的分拣任务。页面结构保持不变，后续只需要替换成更真实的任务规划或硬件回传。"
+        }
+        return viewModel.roboticsConfig.pipelineOverviewBody
+    }
+
+    private func roboticsWorkflowCardText(for step: RoboticsInfoCardConfig) -> String {
+        switch step.id {
+        case "input":
+            if !viewModel.selectedDetectionImagePath.isEmpty {
+                return "当前输入来自 \(roboticsSelectedImageName)，作为整条视觉分析链的原始场景。"
+            }
+        case "opencv":
+            if roboticsHasPrediction {
+                return "当前已基于输入图像完成结果叠加与点位表达，抓取点使用 \(roboticsPickPointLabel) 作为模拟执行坐标；预处理链路状态为 \(detectionPreprocessStepsLabel)。"
+            }
+        case "pytorch":
+            if roboticsHasPrediction {
+                return "当前模型输出目标类别 \(roboticsTargetLabel)，最高置信度为 \(roboticsTargetConfidenceLongLabel)，模型运行设备为 \(roboticsDeviceLabel)。"
+            }
+        case "decision":
+            if roboticsHasPrediction {
+                return "当前工业视觉逻辑已根据类别路由规则生成决策：\(roboticsRoutingRuleLabel)，并输出 \(roboticsDecisionLabel)。"
+            }
+        case "action":
+            if roboticsHasPrediction || viewModel.isRunningDetectionPrediction {
+                return "当前机械臂演示状态为 \(roboticsStatusLabel)，任务阶段位于 \(roboticsCurrentStage)，下一步为 \(roboticsNextAction)。"
+            }
+        default:
+            break
+        }
+        return step.body
+    }
+
+    private var detectionCameraStatusLabel: String {
+        if viewModel.isDetectionCameraDemoRunning {
+            return "Live"
+        }
+        if viewModel.isLaunchingDetectionCameraDemo {
+            return "Booting"
+        }
+        return "Idle"
+    }
+
+    private var detectionPreprocessStepsLabel: String {
+        let isEnabled = (viewModel.detectionPreprocessConfig["enabled"] ?? "").lowercased() == "true"
+        guard isEnabled else { return "Disabled" }
+
+        let activeKeys = [
+            ("resize.enabled", "resize"),
+            ("brightness.enabled", "brightness"),
+            ("contrast.enabled", "contrast"),
+            ("gaussian_blur.enabled", "blur"),
+            ("roi.enabled", "roi"),
+        ].compactMap { key, label -> String? in
+            (viewModel.detectionPreprocessConfig[key] ?? "").lowercased() == "true" ? label : nil
+        }
+
+        return activeKeys.isEmpty ? "Enabled" : activeKeys.joined(separator: ", ")
+    }
+
+    private var detectionPreprocessSummaryLabel: String {
+        detectionPreprocessStepsLabel == "Disabled" ? "Off" : "On"
+    }
+
+    private func roboticsStageStatus(_ index: Int) -> String {
+        if roboticsIsDebugMode {
+            if index < roboticsEffectiveStageIndex { return roboticsBilingualLabel("done", fallback: "已完成 Done") }
+            if index == roboticsEffectiveStageIndex { return roboticsBilingualLabel("active", fallback: "进行中 Active") }
+            return roboticsBilingualLabel("pending", fallback: "待执行 Pending")
+        }
+        if roboticsDemoIsComplete && index < viewModel.roboticsConfig.stages.count { return roboticsBilingualLabel("done", fallback: "已完成 Done") }
+        if index < roboticsDemoStageIndex { return roboticsBilingualLabel("done", fallback: "已完成 Done") }
+        if index == roboticsDemoStageIndex { return roboticsBilingualLabel("active", fallback: "进行中 Active") }
+        return roboticsBilingualLabel("pending", fallback: "待执行 Pending")
+    }
+
+    private func roboticsStageTint(_ index: Int) -> Color {
+        switch roboticsStageStatus(index) {
+        case "Done":
+            return Color(red: 0.12, green: 0.70, blue: 0.56)
+        case "Active":
+            return Color(red: 0.96, green: 0.58, blue: 0.24)
+        default:
+            return Color(red: 0.52, green: 0.57, blue: 0.67)
+        }
+    }
+
+    private func colorFromHex(_ hex: String) -> Color {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        guard cleaned.count == 6, let value = Int(cleaned, radix: 16) else {
+            return .accentColor
+        }
+        let red = Double((value >> 16) & 0xFF) / 255.0
+        let green = Double((value >> 8) & 0xFF) / 255.0
+        let blue = Double(value & 0xFF) / 255.0
+        return Color(red: red, green: green, blue: blue)
+    }
+
+    private func roboticsSummaryLabel(_ key: String, fallback: String) -> String {
+        viewModel.roboticsConfig.summaryLabels[key] ?? fallback
+    }
+
+    private func roboticsRuntimeLabel(_ key: String, fallback: String) -> String {
+        viewModel.roboticsConfig.runtimeSnapshotLabels[key] ?? fallback
+    }
+
+    private func roboticsReasoningLabel(_ key: String, fallback: String) -> String {
+        viewModel.roboticsConfig.reasoningLabels[key] ?? fallback
+    }
+
+    private func roboticsBilingualLabel(_ key: String, fallback: String) -> String {
+        viewModel.roboticsConfig.bilingualLabels[key] ?? fallback
+    }
+
+    private func resetRoboticsTimeline() {
+        roboticsTimelineTask?.cancel()
+        roboticsTimelineTask = nil
+        roboticsDemoStageIndex = -1
+        roboticsDemoElapsed = 0.0
+        roboticsDemoIsComplete = false
+        roboticsDebugStageIndex = nil
+        roboticsDebugStageProgress = 0.5
+    }
+
+    private func startRoboticsTimeline() {
+        roboticsTimelineTask?.cancel()
+        roboticsDebugStageIndex = nil
+        roboticsDebugStageProgress = 0.5
+        roboticsDemoStageIndex = 0
+        roboticsDemoElapsed = 0.0
+        roboticsDemoIsComplete = false
+
+        roboticsTimelineTask = Task { @MainActor in
+            var elapsed = 0.0
+            let stages = viewModel.roboticsConfig.stages
+            guard !stages.isEmpty else { return }
+
+            while viewModel.isRunningDetectionPrediction {
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                guard !Task.isCancelled else { return }
+                elapsed += 0.12
+                roboticsDemoElapsed = elapsed
+            }
+
+            guard viewModel.detectionPrediction != nil else {
+                return
+            }
+
+            for index in 1..<stages.count {
+                roboticsDemoStageIndex = index
+                let duration = stages[index].durationSeconds
+                let step = 0.05
+                var stageElapsed = 0.0
+
+                while stageElapsed < duration {
+                    let slice = min(step, duration - stageElapsed)
+                    try? await Task.sleep(nanoseconds: UInt64(slice * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    stageElapsed += slice
+                    roboticsDemoElapsed = elapsed + stageElapsed
+                }
+
+                elapsed += duration
+                roboticsDemoElapsed = elapsed
+            }
+
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            roboticsDemoElapsed = elapsed + 0.4
+            roboticsDemoIsComplete = true
+        }
+    }
+
+    private func setRoboticsDebugStage(_ index: Int) {
+        guard index >= 0, index < viewModel.roboticsConfig.stages.count else { return }
+        roboticsTimelineTask?.cancel()
+        roboticsTimelineTask = nil
+        roboticsDemoIsComplete = false
+        roboticsDebugStageIndex = index
+        roboticsDebugStageProgress = defaultDebugProgress(for: viewModel.roboticsConfig.stages[index].id)
+    }
+
+    private func clearRoboticsDebugStage() {
+        roboticsDebugStageIndex = nil
+        roboticsDebugStageProgress = 0.5
+    }
+
+    private func defaultDebugProgress(for stageID: String) -> Double {
+        switch stageID {
+        case "detect":
+            return 0.65
+        case "target_lock":
+            return 0.75
+        case "path_plan":
+            return 0.75
+        case "pick":
+            return 0.76
+        case "transfer":
+            return 0.82
+        case "place":
+            return 0.58
+        case "release":
+            return 0.18
+        case "complete":
+            return 0.35
+        default:
+            return 0.5
+        }
     }
 
     private func detectionThresholdPresetButton(_ value: Double) -> some View {
@@ -2995,6 +4091,70 @@ private struct MetricTile: View {
     }
 }
 
+private struct RoboticsStageRow: View {
+    let title: String
+    let status: String
+    let tint: Color
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(tint)
+                .frame(width: 10, height: 10)
+                .padding(.top, 5)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(status)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(tint.opacity(0.14))
+                        )
+                        .foregroundStyle(tint)
+                }
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(tint.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
+private struct RoboticsKeyValueRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 82, alignment: .leading)
+            Text(value)
+                .font(.system(size: 14))
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
 private struct AnswerSectionCard: View {
     let title: String
     let systemImage: String
@@ -3127,6 +4287,8 @@ private struct DetectionAnnotatedImage: View {
             return .orange
         case "stroller":
             return .blue
+        case "phone":
+            return .purple
         default:
             return .green
         }

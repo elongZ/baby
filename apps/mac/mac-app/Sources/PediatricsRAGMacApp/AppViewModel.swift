@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
@@ -100,6 +101,7 @@ final class AppViewModel: ObservableObject {
     @Published var detectionInfoMessage = ""
     @Published var isPickingDetectionImage = false
     @Published var isRunningDetectionPrediction = false
+    @Published var detectionPredictionRunID = 0
     @Published var detectionDatasetSamples: [DetectionDatasetSample] = []
     @Published var selectedDetectionDatasetBucket: DetectionDatasetBucket = .train
     @Published var selectedDetectionDatasetClassFilter: DetectionDatasetClassFilter = .all
@@ -121,9 +123,18 @@ final class AppViewModel: ObservableObject {
     @Published var isRunningDetectionTraining = false
     @Published var detectionTrainingRunDir = ""
     @Published var detectionBestWeightsPath = ""
+    @Published var roboticsConfig: RoboticsDemoConfig = .default
+    @Published var detectionCameraConfig: [String: String] = [:]
+    @Published var detectionPreprocessConfig: [String: String] = [:]
+    @Published var isLaunchingDetectionCameraDemo = false
+    @Published var isDetectionCameraDemoRunning = false
+    @Published var detectionCameraDemoErrorMessage = ""
+    @Published var liveCameraSession: AVCaptureSession?
+    @Published var liveCameraFrameSize: CGSize = .zero
 
     private let service = PythonService()
     private let webService = WebService()
+    private let detectionCameraController = DetectionCameraController()
     private var bootTask: Task<Void, Never>?
     private var logRefreshTask: Task<Void, Never>?
     private var trainingAutosaveTask: Task<Void, Never>?
@@ -131,6 +142,17 @@ final class AppViewModel: ObservableObject {
     private var trainingStore: TrainingDataStore?
     private var hasLoadedDetectionThresholdDefaults = false
     private var hasLoadedDetectionTrainingDefaults = false
+    private var isProcessingLiveDetectionFrame = false
+    private var detectionAnnotationTask: Process?
+
+    init() {
+        detectionCameraController.onFrameJPEG = { [weak self] jpegData, frameSize in
+            Task { @MainActor [weak self] in
+                await self?.submitLiveDetectionFrame(jpegData: jpegData, frameSize: frameSize)
+            }
+        }
+        start()
+    }
 
     var canAsk: Bool {
         if case .ready = serviceState {
@@ -307,7 +329,7 @@ final class AppViewModel: ObservableObject {
                 return true
             case .unlabeled:
                 return sample.classNames.isEmpty
-            case .diaper, .stroller:
+            case .diaper, .stroller, .phone:
                 return sample.classNames.contains(selectedDetectionDatasetClassFilter.rawValue)
             }
         }
@@ -337,10 +359,6 @@ final class AppViewModel: ObservableObject {
                 self.reconcileDetectionDatasetSelection()
             }
         )
-    }
-
-    init() {
-        start()
     }
 
     func start() {
@@ -988,11 +1006,6 @@ final class AppViewModel: ObservableObject {
     }
 
     func selectDetectionImage() {
-        guard case .ready = serviceState else {
-            detectionErrorMessage = "本地 API 尚未就绪。"
-            return
-        }
-
         isPickingDetectionImage = true
         defer { isPickingDetectionImage = false }
 
@@ -1001,6 +1014,43 @@ final class AppViewModel: ObservableObject {
         }
 
         selectedDetectionImagePath = url.path
+        detectionPrediction = nil
+        detectionErrorMessage = ""
+        if case .ready = serviceState {
+            runDetectionPrediction()
+        } else {
+            detectionErrorMessage = "图片已选择，但本地 API 尚未就绪。当前实例的日志显示 8765 端口被占用，请关闭旧实例后重试。"
+        }
+    }
+
+    func runRoboticsSampleDemo() {
+        guard case .ready = serviceState else {
+            detectionErrorMessage = "本地 API 尚未就绪。"
+            return
+        }
+
+        guard let projectRootURL else {
+            detectionErrorMessage = "项目根目录尚未就绪。"
+            return
+        }
+
+        let candidates = [
+            "detection/datasets/images/val/stroller_026.jpg",
+            "detection/datasets/images/val/diaper_040.jpg",
+            "detection/datasets/images/val/stroller_030.png",
+            "runs/detect/detection/outputs/predict/stroller_032.jpg",
+            "runs/detect/detection/outputs/predict/diaper_046.jpg",
+        ]
+
+        guard let sampleURL = candidates
+            .map({ projectRootURL.appendingPathComponent($0) })
+            .first(where: { FileManager.default.fileExists(atPath: $0.path) })
+        else {
+            detectionErrorMessage = "没有找到可用的 Robotics 演示样例图。"
+            return
+        }
+
+        selectedDetectionImagePath = sampleURL.path
         detectionPrediction = nil
         detectionErrorMessage = ""
         runDetectionPrediction()
@@ -1016,6 +1066,9 @@ final class AppViewModel: ObservableObject {
             do {
                 let status = try await APIClient(baseURL: service.baseURL).detectionStatus()
                 detectionStatus = status
+                if let projectRootURL {
+                    loadDetectionRuntimeConfigs(from: projectRootURL)
+                }
                 if !hasLoadedDetectionThresholdDefaults {
                     detectionConfidenceThreshold = status.confidenceThreshold
                     detectionIoUThreshold = status.iouThreshold
@@ -1053,12 +1106,47 @@ final class AppViewModel: ObservableObject {
                 async let statusTask = client.detectionStatus()
                 detectionPrediction = try await predictionTask
                 detectionStatus = try await statusTask
+                detectionPredictionRunID += 1
             } catch {
                 detectionErrorMessage = "Detection 推理失败：\(error.localizedDescription)"
                 logs = service.recentLogs()
             }
             isRunningDetectionPrediction = false
         }
+    }
+
+    func launchDetectionCameraDemo() {
+        guard case .ready = serviceState else {
+            detectionCameraDemoErrorMessage = "本地 API 尚未就绪。"
+            return
+        }
+        guard !isDetectionCameraDemoRunning else {
+            detectionCameraDemoErrorMessage = ""
+            return
+        }
+
+        isLaunchingDetectionCameraDemo = true
+        detectionCameraDemoErrorMessage = ""
+        Task {
+            do {
+                try await ensureCameraAccess()
+                try detectionCameraController.start()
+                liveCameraSession = detectionCameraController.session
+                liveCameraFrameSize = .zero
+                isDetectionCameraDemoRunning = true
+            } catch {
+                detectionCameraDemoErrorMessage = "启动摄像头失败：\(error.localizedDescription)"
+            }
+            isLaunchingDetectionCameraDemo = false
+        }
+    }
+
+    func stopDetectionCameraDemo() {
+        detectionCameraController.stop()
+        isLaunchingDetectionCameraDemo = false
+        isDetectionCameraDemoRunning = false
+        liveCameraSession = nil
+        liveCameraFrameSize = .zero
     }
 
     func refreshDetectionDataset() {
@@ -1071,36 +1159,65 @@ final class AppViewModel: ObservableObject {
             let datasetRoot = projectRootURL.appendingPathComponent("detection/datasets", isDirectory: true)
             let labelRoot = datasetRoot.appendingPathComponent("labels", isDirectory: true)
             let buckets: [(DetectionDatasetBucket, URL)] = [
+                (.pending, datasetRoot.appendingPathComponent("images/pending", isDirectory: true)),
                 (.train, datasetRoot.appendingPathComponent("images/train", isDirectory: true)),
                 (.val, datasetRoot.appendingPathComponent("images/val", isDirectory: true)),
                 (.test, datasetRoot.appendingPathComponent("images/test", isDirectory: true)),
                 (.rejected, datasetRoot.appendingPathComponent("rejected", isDirectory: true)),
             ]
-            let classLookup = ["0": "diaper", "1": "stroller"]
+            let classLookup = ["0": "diaper", "1": "stroller", "2": "phone"]
 
             var samples: [DetectionDatasetSample] = []
             for (bucket, directory) in buckets {
                 guard FileManager.default.fileExists(atPath: directory.path) else { continue }
-                let urls = try FileManager.default.contentsOfDirectory(
-                    at: directory,
-                    includingPropertiesForKeys: nil,
-                    options: [.skipsHiddenFiles]
-                )
-                for url in urls where Self.supportedVisionImageExtensions.contains(url.pathExtension.lowercased()) {
-                    let labelURL: URL? = bucket == .rejected ? nil : labelRoot
-                        .appendingPathComponent(bucket.rawValue, isDirectory: true)
-                        .appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".txt")
-                    let boxes = try parseDetectionBoxes(at: labelURL, classLookup: classLookup)
-                    samples.append(
-                        DetectionDatasetSample(
-                            imagePath: url.path,
-                            labelPath: labelURL?.path,
-                            bucket: bucket,
-                            fileName: url.lastPathComponent,
-                            classNames: Array(Set(boxes.map(\.className))).sorted(),
-                            boxes: boxes
+                if bucket == .pending {
+                    for className in ["diaper", "stroller", "phone"] {
+                        let classDir = directory.appendingPathComponent(className, isDirectory: true)
+                        guard FileManager.default.fileExists(atPath: classDir.path) else { continue }
+                        let urls = try FileManager.default.contentsOfDirectory(
+                            at: classDir,
+                            includingPropertiesForKeys: nil,
+                            options: [.skipsHiddenFiles]
                         )
+                        for url in urls where Self.supportedVisionImageExtensions.contains(url.pathExtension.lowercased()) {
+                            let labelURL = labelRoot
+                                .appendingPathComponent("pending", isDirectory: true)
+                                .appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".txt")
+                            let boxes = try parseDetectionBoxes(at: labelURL, classLookup: classLookup)
+                            samples.append(
+                                DetectionDatasetSample(
+                                    imagePath: url.path,
+                                    labelPath: FileManager.default.fileExists(atPath: labelURL.path) ? labelURL.path : nil,
+                                    bucket: bucket,
+                                    fileName: url.lastPathComponent,
+                                    classNames: boxes.isEmpty ? [className] : Array(Set(boxes.map(\.className))).sorted(),
+                                    boxes: boxes
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    let urls = try FileManager.default.contentsOfDirectory(
+                        at: directory,
+                        includingPropertiesForKeys: nil,
+                        options: [.skipsHiddenFiles]
                     )
+                    for url in urls where Self.supportedVisionImageExtensions.contains(url.pathExtension.lowercased()) {
+                        let labelURL: URL? = bucket == .rejected ? nil : labelRoot
+                            .appendingPathComponent(bucket.rawValue, isDirectory: true)
+                            .appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".txt")
+                        let boxes = try parseDetectionBoxes(at: labelURL, classLookup: classLookup)
+                        samples.append(
+                            DetectionDatasetSample(
+                                imagePath: url.path,
+                                labelPath: labelURL?.path,
+                                bucket: bucket,
+                                fileName: url.lastPathComponent,
+                                classNames: Array(Set(boxes.map(\.className))).sorted(),
+                                boxes: boxes
+                            )
+                        )
+                    }
                 }
             }
 
@@ -1131,6 +1248,9 @@ final class AppViewModel: ObservableObject {
         let imagesPath: String
         let labelsPath: String
         switch selectedDetectionDatasetBucket {
+        case .pending:
+            imagesPath = projectRootURL.appendingPathComponent("detection/datasets/images/pending", isDirectory: true).path
+            labelsPath = projectRootURL.appendingPathComponent("detection/datasets/labels/pending", isDirectory: true).path
         case .train:
             imagesPath = projectRootURL.appendingPathComponent("detection/datasets/images/train", isDirectory: true).path
             labelsPath = projectRootURL.appendingPathComponent("detection/datasets/labels/train", isDirectory: true).path
@@ -1147,14 +1267,23 @@ final class AppViewModel: ObservableObject {
 
         let classesPath = projectRootURL.appendingPathComponent("detection/predefined_classes.txt").path
         detectionDatasetErrorMessage = ""
+        try? FileManager.default.createDirectory(atPath: labelsPath, withIntermediateDirectories: true)
 
         let task = Process()
         task.currentDirectoryURL = projectRootURL
         task.executableURL = URL(fileURLWithPath: labelImgPath)
         task.arguments = [imagesPath, classesPath, labelsPath]
+        if selectedDetectionDatasetBucket == .pending {
+            task.terminationHandler = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.promoteLabeledPendingDetectionSamples()
+                }
+            }
+        }
 
         do {
             try task.run()
+            detectionAnnotationTask = task
         } catch {
             detectionDatasetErrorMessage = "启动标注工具失败：\(error.localizedDescription)"
         }
@@ -1235,6 +1364,107 @@ final class AppViewModel: ObservableObject {
 
     func detectionDatasetCount(bucket: DetectionDatasetBucket) -> Int {
         detectionDatasetSamples.filter { $0.bucket == bucket }.count
+    }
+
+    private func promoteLabeledPendingDetectionSamples() {
+        guard let projectRootURL else {
+            detectionDatasetErrorMessage = "项目根目录尚未就绪。"
+            return
+        }
+
+        let fileManager = FileManager.default
+        let datasetRoot = projectRootURL.appendingPathComponent("detection/datasets", isDirectory: true)
+        let pendingImagesRoot = datasetRoot.appendingPathComponent("images/pending", isDirectory: true)
+        let pendingLabelsRoot = datasetRoot.appendingPathComponent("labels/pending", isDirectory: true)
+        let supportedClasses = ["diaper", "stroller", "phone"]
+        var movedCount = 0
+
+        do {
+            for className in supportedClasses {
+                let classDir = pendingImagesRoot.appendingPathComponent(className, isDirectory: true)
+                guard fileManager.fileExists(atPath: classDir.path) else { continue }
+                let imageURLs = try fileManager.contentsOfDirectory(
+                    at: classDir,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                )
+
+                for imageURL in imageURLs where Self.supportedVisionImageExtensions.contains(imageURL.pathExtension.lowercased()) {
+                    let labelURL = pendingLabelsRoot.appendingPathComponent(imageURL.deletingPathExtension().lastPathComponent + ".txt")
+                    guard hasValidPendingDetectionLabel(at: labelURL) else { continue }
+
+                    let destinationBucket = detectionDatasetSplitForPendingSample(named: imageURL.lastPathComponent)
+                    let destinationImageURL = datasetRoot
+                        .appendingPathComponent("images/\(destinationBucket.rawValue)", isDirectory: true)
+                        .appendingPathComponent(imageURL.lastPathComponent)
+                    let destinationLabelURL = datasetRoot
+                        .appendingPathComponent("labels/\(destinationBucket.rawValue)", isDirectory: true)
+                        .appendingPathComponent(labelURL.lastPathComponent)
+
+                    try fileManager.createDirectory(
+                        at: destinationImageURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try fileManager.createDirectory(
+                        at: destinationLabelURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+
+                    if fileManager.fileExists(atPath: destinationImageURL.path) {
+                        try fileManager.removeItem(at: destinationImageURL)
+                    }
+                    if fileManager.fileExists(atPath: destinationLabelURL.path) {
+                        try fileManager.removeItem(at: destinationLabelURL)
+                    }
+
+                    try fileManager.moveItem(at: imageURL, to: destinationImageURL)
+                    try fileManager.moveItem(at: labelURL, to: destinationLabelURL)
+                    movedCount += 1
+                }
+            }
+
+            refreshDetectionDataset()
+            if movedCount > 0 {
+                detectionDatasetErrorMessage = ""
+                detectionInfoMessage = "已自动同步 \(movedCount) 张已标注图片到 Train / Val / Test。"
+            }
+        } catch {
+            detectionDatasetErrorMessage = "同步 Pending 标注失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func hasValidPendingDetectionLabel(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+
+        let validClasses = Set(["0", "1", "2"])
+        let lines = text
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !lines.isEmpty else { return false }
+
+        for line in lines {
+            let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard parts.count == 5, validClasses.contains(parts[0]) else { return false }
+            let values = parts.dropFirst().compactMap(Double.init)
+            guard values.count == 4, values.allSatisfy({ (0.0 ... 1.0).contains($0) }) else { return false }
+        }
+        return true
+    }
+
+    private func detectionDatasetSplitForPendingSample(named fileName: String) -> DetectionDatasetBucket {
+        let bucket = fileName.utf8.reduce(0) { partial, byte in
+            (partial * 31 + Int(byte)) % 10
+        }
+        switch bucket {
+        case 0:
+            return .val
+        case 1:
+            return .test
+        default:
+            return .train
+        }
     }
 
     private func parseDetectionBoxes(at url: URL?, classLookup: [String: String]) throws -> [DetectionDatasetBox] {
@@ -1469,6 +1699,8 @@ final class AppViewModel: ObservableObject {
             let root = try discoverProjectRoot()
             projectRootURL = root
             projectRootPath = root.path
+            loadRoboticsConfig(from: root)
+            loadDetectionRuntimeConfigs(from: root)
             setupTrainingWorkspace(root)
             try service.start(projectRoot: root)
             logFilePath = service.logFileURL?.path ?? ""
@@ -1600,6 +1832,63 @@ final class AppViewModel: ObservableObject {
                 logs = service.recentLogs()
                 try? await Task.sleep(for: .seconds(1))
             }
+        }
+    }
+
+    private func loadRoboticsConfig(from root: URL) {
+        let configURL = root.appendingPathComponent("robotics/configs/demo_config.json")
+        do {
+            let data = try Data(contentsOf: configURL)
+            roboticsConfig = try JSONDecoder().decode(RoboticsDemoConfig.self, from: data)
+        } catch {
+            roboticsConfig = .default
+        }
+    }
+
+    private func loadDetectionRuntimeConfigs(from root: URL) {
+        let cameraConfigURL = root.appendingPathComponent("detection/configs/camera.yaml")
+        let preprocessConfigURL = root.appendingPathComponent("detection/configs/preprocess.yaml")
+        detectionCameraConfig = (try? String(contentsOf: cameraConfigURL, encoding: .utf8)).map(parseKeyValueYAML) ?? [:]
+        detectionPreprocessConfig = (try? String(contentsOf: preprocessConfigURL, encoding: .utf8)).map(parseKeyValueYAML) ?? [:]
+    }
+
+    private func submitLiveDetectionFrame(jpegData: Data, frameSize: CGSize) async {
+        guard isDetectionCameraDemoRunning else { return }
+        guard !isProcessingLiveDetectionFrame else { return }
+        guard case .ready = serviceState else { return }
+
+        isProcessingLiveDetectionFrame = true
+        liveCameraFrameSize = frameSize
+        defer { isProcessingLiveDetectionFrame = false }
+
+        do {
+            let client = APIClient(baseURL: service.baseURL)
+            let prediction = try await client.predictDetectionFrame(
+                jpegData: jpegData,
+                confidenceThreshold: detectionConfidenceThreshold,
+                iouThreshold: detectionIoUThreshold
+            )
+            detectionPrediction = prediction
+            detectionPredictionRunID += 1
+            detectionErrorMessage = ""
+        } catch {
+            detectionCameraDemoErrorMessage = "实时检测失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func ensureCameraAccess() async throws {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            return
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            if granted { return }
+            fallthrough
+        default:
+            throw NSError(domain: "AppViewModel", code: 7001, userInfo: [
+                NSLocalizedDescriptionKey: "未授予摄像头权限。"
+            ])
         }
     }
 

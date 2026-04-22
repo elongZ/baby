@@ -6,9 +6,9 @@
 
 ## 界面预览
 
-| RAG / Knowledge Base | Vision / Playground |
+| RAG / Chat | Vision / Playground |
 | --- | --- |
-| ![RAG Knowledge Base](docs/readme-assets/rag-knowledge-base.png) | ![Vision Playground](docs/readme-assets/vision-playground.png) |
+| ![RAG Chat](docs/readme-assets/rag-chat.png) | ![Vision Playground](docs/readme-assets/vision-playground.png) |
 | Detection / Playground | Robotics / Playground |
 | ![Detection Playground](docs/readme-assets/detection-playground.png) | ![Robotics Playground](docs/readme-assets/robotics-playground.png) |
 

@@ -33,3 +33,5 @@ data/*.sqlite3
 rag/api/__pycache__/
 apps/mac/desktop/__pycache__/
 rag/web/__pycache__/
+docs/training_strategy.md
+docs/应聘简历_视觉算法_机器人_智能体方向.md

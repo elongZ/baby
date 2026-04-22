@@ -4,6 +4,14 @@
 
 当前默认入口是 `SwiftUI + 本地 FastAPI` 的 mac app。应用内已经拆分出 `RAG / Vision / Detection / Robotics` 四个区域，用来承接知识问答、图像识别、目标检测和视觉引导机械臂演示。
 
+## 界面预览
+
+| RAG / Knowledge Base | Vision / Playground |
+| --- | --- |
+| ![RAG Knowledge Base](docs/readme-assets/rag-knowledge-base.png) | ![Vision Playground](docs/readme-assets/vision-playground.png) |
+| Detection / Playground | Robotics / Playground |
+| ![Detection Playground](docs/readme-assets/detection-playground.png) | ![Robotics Playground](docs/readme-assets/robotics-playground.png) |
+
 ## 模块概览
 
 - `rag/`

@@ -265,6 +265,7 @@ python -m scripts.train_lora \
 
 - 当前仓库已经不只是单一的“Pediatrics RAG”项目，而是一个围绕本地 AI 应用、视觉实验和演示流程逐步扩展的工作仓库。
 - 仓库内目前同时存在源码、训练数据、评测产物和部分临时文件；后续如果要对外长期维护，建议进一步收敛 `.gitignore` 与产物目录边界。
+- 代码注释与文档约定见：[docs/code-comment-guidelines.md](/Users/macmain/Documents/baby/docs/code-comment-guidelines.md)
 - 各子模块还有更详细说明：
   - [detection/README.md](/Users/macmain/Documents/baby/detection/README.md)
   - [robotics/README.md](/Users/macmain/Documents/baby/robotics/README.md)

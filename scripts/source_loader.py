@@ -1,3 +1,9 @@
+"""知识库源文件加载与转换入口。
+
+本模块负责识别支持的资料类型、调用 MinerU 或 markitdown 进行转换，并将结果缓存成
+统一的 Markdown 文本结构，供后续清洗和切块流程复用。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,12 +46,16 @@ PROJECT_ROOT_ENV = "BABY_APP_PROJECT_ROOT"
 
 @dataclass
 class SourceDocument:
+    """统一表示一个已加载的源文档及其页面文本。"""
+
     path: Path
     source: str
     pages: list[dict]
 
 
 def is_supported_source(path: Path) -> bool:
+    """判断文件是否属于当前知识库构建链路支持的格式。"""
+
     name = path.name
     if name.startswith(".") or name.startswith("~$"):
         return False
@@ -53,6 +63,8 @@ def is_supported_source(path: Path) -> bool:
 
 
 def collect_source_files(source_dir: str | Path) -> list[Path]:
+    """递归收集目录下所有可用于知识库构建的源文件。"""
+
     base = Path(source_dir)
     if not base.exists():
         return []
@@ -162,6 +174,16 @@ def _load_converted_document(
 
 
 def load_source_document(path: str | Path, source_dir: str | Path | None = None) -> SourceDocument:
+    """加载单个源文件，并转换成统一的页面文本结构。
+
+    Args:
+        path: 源文件路径。
+        source_dir: 资料根目录；提供时会用于生成稳定的相对 source 名称。
+
+    Returns:
+        包含原路径、逻辑 source 名称和页面文本列表的文档对象。
+    """
+
     file_path = Path(path)
     base = Path(source_dir) if source_dir is not None else file_path.parent
     source_name = str(file_path.relative_to(base)) if file_path.is_relative_to(base) else file_path.name

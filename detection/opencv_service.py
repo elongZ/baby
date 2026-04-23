@@ -1,3 +1,9 @@
+"""OpenCV 摄像头检测服务。
+
+本模块负责把摄像头采集、可选预处理、检测推理和实时可视化串成一条本地 demo 链路。
+它面向演示与联调，不承担检测模型训练或 API 服务职责。
+"""
+
 from __future__ import annotations
 
 import time
@@ -21,6 +27,8 @@ except Exception as exc:  # pragma: no cover - dependency guard
 
 @dataclass
 class CameraRuntimeConfig:
+    """摄像头演示窗口与采集行为的运行时配置。"""
+
     camera_index: int
     frame_width: int
     frame_height: int
@@ -50,6 +58,8 @@ class CameraRuntimeConfig:
 
 
 class OpenCVDetectionService:
+    """管理实时摄像头检测流程的服务对象。"""
+
     def __init__(
         self,
         detector: DetectionSession,
@@ -118,6 +128,15 @@ class OpenCVDetectionService:
         return frame
 
     def process_frame(self, frame_bgr: np.ndarray) -> tuple[np.ndarray, dict]:
+        """处理单帧图像，并按设定频率触发一次检测推理。
+
+        Args:
+            frame_bgr: 摄像头读出的 BGR 帧。
+
+        Returns:
+            渲染了检测结果的图像，以及最近一次推理得到的结构化结果。
+        """
+
         self.frame_index += 1
         preprocessed_bgr, preprocess_summary = preprocess_frame(frame_bgr, self.preprocess_config)
         self.last_preprocessed_frame = preprocessed_bgr

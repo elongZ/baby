@@ -1,3 +1,9 @@
+"""RAG 在线问答编排层。
+
+本模块负责把检索、重排、证据充足性判断和生成串成一次完整问答流程。
+它不负责底层向量索引构建，也不负责模型训练，只面向在线请求做推理编排。
+"""
+
 from __future__ import annotations
 
 import re
@@ -8,6 +14,8 @@ from rag.retriever import Retriever
 
 
 class RagPipeline:
+    """协调检索、重排和回答生成的主流程对象。"""
+
     PEDIATRIC_HINTS = (
         "宝宝",
         "婴儿",
@@ -127,6 +135,18 @@ class RagPipeline:
         retrieve_k: int | None = None,
         relevance_threshold: float | None = None,
     ) -> dict:
+        """执行一次带证据校验的问答流程。
+
+        Args:
+            question: 用户问题。
+            top_k: 最终保留并返回的参考片段数。
+            retrieve_k: 初始检索召回数量；为空时按 top_k 自动放大。
+            relevance_threshold: 最低证据阈值；为空时使用默认阈值。
+
+        Returns:
+            包含答案、上下文片段、相关性分数和证据校验结果的响应字典。
+        """
+
         retrieve_top_k = retrieve_k if retrieve_k is not None else min(10, max(top_k * 3, top_k))
         contexts = self.retriever.search(query=question, top_k=retrieve_top_k)
         final_contexts = self.reranker.rerank(question=question, contexts=contexts, top_k=top_k)

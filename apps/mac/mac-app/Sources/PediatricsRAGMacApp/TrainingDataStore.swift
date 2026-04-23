@@ -1,6 +1,10 @@
+// 封装训练标注数据的 SQLite 存储与快照导入导出路径。
+// 本文件负责样本持久化和基础查询，不负责 UI 编辑状态或模型训练本身。
+
 import Foundation
 import SQLite3
 
+/// 训练样本的本地持久化存储。
 final class TrainingDataStore {
     private let databaseURL: URL
     private let snapshotURL: URL
@@ -31,6 +35,7 @@ final class TrainingDataStore {
     var snapshotPath: String { snapshotURL.path }
     var datasetPath: String { datasetURL.path }
 
+    /// 按状态和搜索词读取训练样本列表。
     func fetchSamples(status: TrainingSampleStatus? = nil, search: String = "") throws -> [TrainingSample] {
         var sql = """
         SELECT sample_id, question, mode, annotation_guideline, contexts_json, answer,

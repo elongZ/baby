@@ -1,3 +1,9 @@
+"""混合检索层。
+
+本模块负责加载向量索引和 chunk 元数据，并把稠密向量检索与轻量关键词检索合并，
+为上层 pipeline 提供统一排序后的候选上下文。
+"""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +16,8 @@ from sentence_transformers import SentenceTransformer
 
 
 class Retriever:
+    """面向知识库 chunk 的混合检索器。"""
+
     def __init__(
         self,
         embedding_model: str,
@@ -87,6 +95,16 @@ class Retriever:
         return results
 
     def search(self, query: str, top_k: int = 3) -> list[dict]:
+        """执行一次混合检索并返回排序后的上下文片段。
+
+        Args:
+            query: 用户查询。
+            top_k: 最终返回的片段数量。
+
+        Returns:
+            按综合相关性排序后的 chunk 列表。
+        """
+
         dense_results = self._dense_search(query=query, top_k=top_k)
         keyword_results = self._keyword_search(query=query, top_k=top_k)
 

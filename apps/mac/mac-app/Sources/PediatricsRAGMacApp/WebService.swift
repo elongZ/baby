@@ -1,5 +1,9 @@
+// 管理本地 Streamlit Web 进程的启动与停止。
+// 本文件只负责进程编排和启动参数，不承担 Web 页面本身的实现。
+
 import Foundation
 
+/// 用于控制本地 Web 调试服务生命周期的对象。
 @MainActor
 final class WebService: ObservableObject {
     private(set) var process: Process?
@@ -29,6 +33,7 @@ final class WebService: ObservableObject {
         "http://\(apiHost):\(apiPort)"
     }
 
+    /// 启动本地 Web 服务；如果进程已在运行则直接复用。
     func start(projectRoot: URL) throws {
         if let process, process.isRunning {
             return

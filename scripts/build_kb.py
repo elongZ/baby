@@ -1,3 +1,9 @@
+"""构建知识库索引及其缓存产物。
+
+本模块负责扫描资料目录、转换与清洗文本、切块、复用已有向量并写出
+FAISS 索引、chunk 元数据和源文件清单。它属于离线构建链路，不负责在线问答服务。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -21,6 +27,8 @@ PROJECT_ROOT_ENV = "BABY_APP_PROJECT_ROOT"
 
 
 def parse_args() -> argparse.Namespace:
+    """解析知识库构建脚本参数。"""
+
     parser = argparse.ArgumentParser(description="Build FAISS index from source files")
     parser.add_argument("--pdf", help="Optional single PDF file path for one-off builds")
     parser.add_argument(

@@ -1,9 +1,14 @@
+// 管理 mac app 的主状态与主要交互流程。
+// 本文件负责组织 RAG、知识库、训练数据、Vision、Detection 和 Robotics
+// 相关的 UI 状态与异步调用，不直接实现底层网络协议或 Python 服务细节。
+
 import AppKit
 import AVFoundation
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// 应用主界面的状态容器与交互编排入口。
 @MainActor
 final class AppViewModel: ObservableObject {
     private static let supportedImportExtensions = [

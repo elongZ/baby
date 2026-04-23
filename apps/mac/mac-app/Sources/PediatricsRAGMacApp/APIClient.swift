@@ -1,14 +1,20 @@
+// 封装 mac app 到本地 FastAPI 服务的 HTTP 调用。
+// 本文件负责请求构造、响应解码和统一错误校验，不负责 UI 状态管理。
+
 import Foundation
 
+/// 面向本地 API 的轻量客户端。
 struct APIClient {
     let baseURL: URL
 
+    /// 查询服务健康状态与当前运行模式。
     func health() async throws -> HealthResponse {
         let (data, response) = try await URLSession.shared.data(from: baseURL.appending(path: "health"))
         try validate(response: response, data: data)
         return try JSONDecoder().decode(HealthResponse.self, from: data)
     }
 
+    /// 发起一次问答请求，并返回带上下文与阈值信息的结果。
     func ask(_ request: AskRequest) async throws -> AskResponse {
         var components = URLComponents(url: baseURL.appending(path: "ask"), resolvingAgainstBaseURL: false)
         components?.queryItems = [

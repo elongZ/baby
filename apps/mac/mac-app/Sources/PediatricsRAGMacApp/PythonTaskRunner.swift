@@ -1,5 +1,9 @@
+// 运行一次性的本地 Python 模块任务，并收集标准输出与错误输出。
+// 本文件用于训练数据导出、构建等短任务，不负责常驻 API 服务。
+
 import Foundation
 
+/// 线程安全地收集子进程输出。
 private final class TaskOutputCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var stdoutBuffer = Data()
@@ -40,7 +44,9 @@ private final class TaskOutputCollector: @unchecked Sendable {
     }
 }
 
+/// 用于执行一次性 Python 模块命令的轻量运行器。
 final class PythonTaskRunner {
+    /// 执行指定 Python 模块，并返回合并后的标准输出与错误输出。
     func run(module: String, arguments: [String], projectRoot: URL) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let task = Process()

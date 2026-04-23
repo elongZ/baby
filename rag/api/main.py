@@ -1,3 +1,10 @@
+"""本地 FastAPI 服务入口。
+
+本模块负责暴露 RAG、Vision、Detection 和 Robotics 相关的 HTTP 接口，
+并在进程内组装运行时配置、知识库状态和模型服务调用。
+它不负责训练实现或底层算法细节，只负责在线请求编排与状态查询。
+"""
+
 from __future__ import annotations
 
 import json
@@ -40,24 +47,34 @@ build_state = {
 
 
 class ImportDocumentRequest(BaseModel):
+    """导入单个知识库源文件时使用的请求体。"""
+
     source_path: str
 
 
 class ReplaceDocumentRequest(BaseModel):
+    """替换已有知识库文件时使用的请求体。"""
+
     source_path: str
 
 
 class VisionPredictRequest(BaseModel):
+    """Vision 单图预测请求体。"""
+
     image_path: str
 
 
 class DetectionPredictRequest(BaseModel):
+    """Detection 单图预测请求体。"""
+
     image_path: str
     confidence_threshold: float | None = None
     iou_threshold: float | None = None
 
 
 class DetectionFramePredictRequest(BaseModel):
+    """Detection 实时帧预测请求体。"""
+
     image_base64: str
     confidence_threshold: float | None = None
     iou_threshold: float | None = None
@@ -117,6 +134,8 @@ def _decode_base64_frame(image_base64: str):
 
 
 def get_runtime_config() -> dict:
+    """解析并缓存当前 API 进程的运行时配置。"""
+
     global runtime_config
     if runtime_config is not None:
         return runtime_config
@@ -148,6 +167,8 @@ def get_runtime_config() -> dict:
 
 
 def get_pipeline() -> RagPipeline:
+    """按需初始化并复用全局 RAG pipeline。"""
+
     global pipeline
     if pipeline is None:
         config = get_runtime_config()

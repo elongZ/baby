@@ -1,3 +1,9 @@
+"""Detection 在线推理服务层。
+
+本模块负责加载检测模型、缓存推理 session、统一阈值处理，并输出适合
+API 和桌面应用直接消费的检测结果结构。它不负责训练流程，只服务于在线预测。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -159,6 +165,8 @@ def _extract_detections(result) -> list[dict]:
 
 @dataclass
 class DetectionSession:
+    """封装一次可复用的检测模型会话及其推理参数。"""
+
     config_path: str
     config: dict
     model: object

@@ -1,6 +1,10 @@
+// 应用主界面的布局入口。
+// 本文件负责侧边栏导航和各业务页面的视图组合，不负责状态持有和后端调用。
+
 import AppKit
 import SwiftUI
 
+/// 应用主界面的根视图。
 struct ContentView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @State private var roboticsDemoStageIndex = -1

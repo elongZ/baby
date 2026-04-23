@@ -1,5 +1,9 @@
+// 管理本地 FastAPI Python 进程及日志文件。
+// 本文件只负责进程启动、停止和日志读取，不负责具体 API 行为实现。
+
 import Foundation
 
+/// 控制本地 Python API 服务生命周期的对象。
 @MainActor
 final class PythonService: ObservableObject {
     private(set) var process: Process?
@@ -18,6 +22,7 @@ final class PythonService: ObservableObject {
         URL(string: "http://\(host):\(port)/")!
     }
 
+    /// 启动本地 API 进程；如果已运行则复用已有进程。
     func start(projectRoot: URL) throws {
         if let process, process.isRunning {
             return

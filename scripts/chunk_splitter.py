@@ -1,3 +1,9 @@
+"""文本切块工具。
+
+本模块负责把清洗后的页面文本按统一规则切分成适合向量索引和检索的 chunk，
+并保留页码与 chunk 编号等基础元数据。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,11 +15,15 @@ SPLITTER_VERSION = "2026-04-13-a"
 
 @dataclass
 class ChunkConfig:
+    """控制 chunk 大小与重叠范围的配置。"""
+
     chunk_size: int = 500
     chunk_overlap: int = 100
 
 
 def split_text(text: str, config: ChunkConfig | None = None) -> list[str]:
+    """按当前切块策略拆分纯文本。"""
+
     cfg = config or ChunkConfig()
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=cfg.chunk_size,
@@ -24,6 +34,8 @@ def split_text(text: str, config: ChunkConfig | None = None) -> list[str]:
 
 
 def split_pages(pages: list[dict], config: ChunkConfig | None = None) -> list[dict]:
+    """按页切块，并生成带页码和 chunk_id 的结果。"""
+
     chunks: list[dict] = []
     for page_item in pages:
         page_num = page_item["page"]

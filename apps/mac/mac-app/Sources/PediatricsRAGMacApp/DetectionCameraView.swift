@@ -1,8 +1,12 @@
+// 管理桌面端实时摄像头预览、帧采集与检测框叠加。
+// 本文件负责本地摄像头输入和前端渲染，不负责实际检测推理逻辑。
+
 @preconcurrency import AVFoundation
 import CoreImage
 import QuartzCore
 import SwiftUI
 
+/// 采集摄像头 JPEG 帧并回调给上层检测流程的控制器。
 final class DetectionCameraController: NSObject {
     let session = AVCaptureSession()
     var onFrameJPEG: ((Data, CGSize) -> Void)?
@@ -120,6 +124,7 @@ struct CameraPreviewView: NSViewRepresentable {
     }
 }
 
+/// 用于承载 AVCaptureVideoPreviewLayer 的原生 NSView。
 final class CameraPreviewNSView: NSView {
     let previewLayer = AVCaptureVideoPreviewLayer()
 
@@ -139,6 +144,7 @@ final class CameraPreviewNSView: NSView {
     }
 }
 
+/// 将检测框按当前预览区域映射到画面上的叠加层。
 struct DetectionOverlayView: View {
     let detections: [DetectionBox]
     let frameSize: CGSize

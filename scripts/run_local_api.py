@@ -1,3 +1,9 @@
+"""本地 FastAPI 服务启动脚本。
+
+本模块负责发现仓库根目录、加载环境变量并启动 uvicorn。
+它是桌面应用和本地调试统一复用的 API 入口，不负责具体业务处理。
+"""
+
 from __future__ import annotations
 
 import os
@@ -22,6 +28,8 @@ def _candidate_roots() -> list[Path]:
 
 
 def discover_project_root() -> Path:
+    """发现仓库根目录，并兼容从不同工作目录启动。"""
+
     explicit_root = os.getenv("BABY_APP_PROJECT_ROOT")
     if explicit_root:
         path = Path(explicit_root).expanduser().resolve()
@@ -38,6 +46,8 @@ def discover_project_root() -> Path:
 
 
 def main() -> None:
+    """切换到项目根目录后启动本地 API 服务。"""
+
     project_root = discover_project_root()
     os.chdir(project_root)
     load_dotenv(project_root / ".env")

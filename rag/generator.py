@@ -1,3 +1,9 @@
+"""回答生成层。
+
+本模块负责把检索到的上下文整理成提示词，并在可用时调用本地 LoRA 模型生成结构化回答。
+如果本地生成条件不满足，则退回到上下文展示模式，避免在无模型时伪造答案。
+"""
+
 from __future__ import annotations
 
 import os
@@ -5,6 +11,8 @@ import re
 
 
 class AnswerGenerator:
+    """基于上下文片段生成最终回答。"""
+
     def __init__(
         self,
         model: str,
@@ -132,6 +140,16 @@ class AnswerGenerator:
         return text
 
     def generate(self, question: str, contexts: list[dict]) -> str:
+        """根据问题与上下文生成中文回答。
+
+        Args:
+            question: 用户问题。
+            contexts: 检索与重排后的参考片段列表。
+
+        Returns:
+            本地模型生成的结构化回答，或回退模式下的上下文摘要文本。
+        """
+
         if not contexts:
             return "未在资料中检索到相关内容，请换一种问法或补充上下文。"
 

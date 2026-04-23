@@ -1,3 +1,9 @@
+"""Vision 在线推理与状态查询服务。
+
+本模块负责加载分类模型与 prototype 产物，提供单图预测、运行状态查询和评测样本构建能力。
+它面向 API 与桌面应用调用，不负责训练流程本身。
+"""
+
 from __future__ import annotations
 
 import json
@@ -38,6 +44,8 @@ def load_prototype_payload(path: Path) -> dict | None:
 
 @dataclass
 class VisionArtifacts:
+    """聚合 Vision 在线推理所需模型、配置和缓存产物。"""
+
     config_path: Path
     config: dict
     checkpoint_path: Path
@@ -54,6 +62,8 @@ _artifacts_cache: dict[str, VisionArtifacts] = {}
 
 
 def load_artifacts(config_path: str | Path = "vision/configs/classification.yaml") -> VisionArtifacts:
+    """加载并缓存在线推理所需的模型与配置产物。"""
+
     resolved = str(Path(config_path).expanduser().resolve())
     cached = _artifacts_cache.get(resolved)
     if cached is not None:
@@ -96,6 +106,8 @@ def load_artifacts(config_path: str | Path = "vision/configs/classification.yaml
 
 
 def build_status(config_path: str | Path = "vision/configs/classification.yaml") -> dict:
+    """构建当前 Vision 模块的可运行状态摘要。"""
+
     path = Path(config_path).expanduser().resolve()
     config = load_config(path)
     output_dir = Path(config["project"]["output_dir"])
@@ -138,6 +150,8 @@ def build_status(config_path: str | Path = "vision/configs/classification.yaml")
 
 @torch.no_grad()
 def predict_image(image_path: str | Path, config_path: str | Path = "vision/configs/classification.yaml") -> dict:
+    """对单张图片执行分类与拒识判断。"""
+
     artifacts = load_artifacts(config_path=config_path)
     path = Path(image_path).expanduser().resolve()
     if not path.exists():
@@ -231,6 +245,8 @@ def predict_image(image_path: str | Path, config_path: str | Path = "vision/conf
 
 
 def build_evaluation_samples(config_path: str | Path = "vision/configs/classification.yaml") -> dict:
+    """批量生成测试集样本的预测结果，供界面或 API 展示。"""
+
     artifacts = load_artifacts(config_path=config_path)
     test_dir = Path(artifacts.config["data"]["test_dir"])
     samples = scan_samples(test_dir, artifacts.class_names)
